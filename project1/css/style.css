@@ -1,0 +1,94 @@
+.page-content {
+  margin: 50%;
+}
+body {
+  font-family: monospace;
+  display: flex;
+  justify-content: center;
+  margin: 0;
+  overflow-x: hidden;
+}
+.white {
+  background-color: #f0f0f0;
+  color: black;
+}
+.rain-container {
+  width: 1080px;
+  text-align: center;
+  padding: 20px 0;
+  line-height: 1;
+  word-wrap: break-word;
+}
+
+.rain-container {
+  width: 1080px;
+  text-align: center;
+  padding: 20px 0;
+  line-height: 1;
+  word-wrap: break-word;
+}
+
+.def-container {
+  width: 540px;
+  text-align: center;
+  padding: 20px 0;
+  line-height: 2;
+  word-wrap: break-word;
+}
+
+a {
+  color: #f0f0f0;
+  background-color: #110ee6;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+a:hover {
+    background-color: #f0f0f0;
+    color: #110ee6;
+}
+
+.placeholder {
+  margin: 100px 0;
+  font-size: 0.9em;
+  letter-spacing: 2px;
+}
+
+.rain {
+  line-height: 8;
+}
+
+.cloud-background {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            /* 居中变换 */
+            transform: translate(-50%, -50%);
+            z-index: -1; /* 置于最底层 */
+            
+            /* 极淡的颜色，作为纹理存在 */
+            color: rgba(0, 0, 0, .2); 
+            
+            font-size: 16px;
+            line-height: 1;
+            white-space: pre;
+            text-align: center;
+            pointer-events: none;
+}
+
+.net{
+            font-size: 12px;
+            line-height: 1;
+            white-space: pre; 
+            text-align: left;
+            pointer-events: none;
+}
+
+.dark {
+    background-color:#242424;
+    color: #f0f0f0
+}
+
+summary::marker {
+    color:#110ee6;
+}
