@@ -1,0 +1,18 @@
+/* Q: What is p when defining a rule in CSS? */
+/* A: A selector. */
+p {
+  /* Q: What is the property that manipulates the horizontal size of the block? Write that property and give it a value of 60%*/
+  width: 60%;
+  /* Q: What are the other units of measurement we use in CSS? */
+  /* A: rem, px, %vh/vw */
+}
+
+/* Q: How do we select a class in CSS? Add a rule by selecting the "blue" class, and change the background color to some blue color. */
+.水蓝蓝 {
+  background-color: blue;
+}
+/* Q: How do we select an id in CSS? Add a rule by selecting the "main" id, add a border, and change the padding to be 10px all around. */
+#main {
+  padding: 10px;
+  border: 10px solid black;
+}
