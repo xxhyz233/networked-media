@@ -1,0 +1,72 @@
+body {
+    font-family: monospace;
+    background-color: rgb(19, 19, 19);
+    color: white;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+}
+s
+/* Stacks the Time row and Date row vertically */
+.clock-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 40px; /* Space between the Time row and the Date row */
+    width: 100%;
+}
+
+/* Base styles for both rows */
+.clock-hhmmss-container, 
+.clock-yymmdd-container {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start; /* Aligns the tops of the formula boxes */
+}
+
+
+/* Specific size for the Date row */
+
+.clock-hhmmss-container .time-unit p {
+    font-size: 3rem; /* Smaller than the hour/min/sec */
+    height: 80px;      /* Shorter box for smaller date formulas */
+}
+
+.clock-yymmdd-container .time-unit p {
+    font-size: 1.5rem; /* Smaller than the hour/min/sec */
+    height: 80px;      /* Shorter box for smaller date formulas */
+}
+
+/* 每一个时间/日期单元的容器 */
+.time-unit {
+    display: flex;
+    flex-direction: column; /* 让公式和标签上下排列 */
+    align-items: center;    /* 强制所有子元素（公式和标签）水平居中 */
+    justify-content: center;
+    min-width: 150px;       /* 建议设置最小宽度，防止公式变动时文字抖动 */
+}
+
+.label {
+    width: 100%;            /* 确保标签占满容器宽度 */
+    text-align: center;     /* 文字在标签内部居中 */
+    color: #a0a0a0;
+    font-size: 0.8rem;
+    margin-top: 10px;       /* 公式和标签之间的间距 */
+    display: block;         /* 确保它作为块级元素处理 */
+}
+
+.separator {
+    font-size: 2rem;
+    height: 160px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 0 10px;
+    margin: 0;
+} 
+
+.small {
+    height: 80px;
+}
