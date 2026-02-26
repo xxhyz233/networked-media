@@ -1,0 +1,17 @@
+<html>
+    <head>
+        <title>servers!</title>
+    </head>
+    <body>
+        <p>wow this is an html file served by my server</p>
+        <!-- Variable serverData sent from backend -->
+        <%= serverData %>
+
+        <form method="GET" action="/sign">
+            <input type="text" placeholder="Enter your name" name="guestName"/>
+            <input type="submit" value="sign my guestbook"/>
+        </form>
+
+        <h1><%= firstGuest %>was the first person here!</h1>
+    </body>
+</html>
