@@ -1,0 +1,23 @@
+<html>
+    <head>
+        <title>Class 12</title>
+        <link href="style.css" rel="stylesheet">
+        <script src="main.js"></script>
+    </head>
+    <body>
+        <h1>123</h1>
+        <form method="POST" action="/makePost" enctype="multipart/form-data">
+            <input type="text" name="caption">
+            <div class="inputButton">
+                <input type="file" name="myImage">
+                <input type="submit" value="post!!!">
+            </div>  
+        </form>
+        <div class="posts">
+            <% for(let post of allPosts) { %>
+                <img src="/uploads/<%= post.file %>">
+                <p> <%= post.caption %></p>
+            <% } %>
+        </div>
+    </body>
+</html>
