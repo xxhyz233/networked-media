@@ -1,0 +1,11 @@
+.submit-container {
+
+}
+
+.post{
+    width: 200px;
+}
+
+.post > img {
+    width: 100%;
+}
