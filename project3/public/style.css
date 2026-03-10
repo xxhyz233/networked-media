@@ -54,7 +54,7 @@ html, body {
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    background-image: url('media/sun.png');
+    background-image: url('./media/sun.png');
     background-size: cover;
     background-position: center;
     background-attachment: fixed;
