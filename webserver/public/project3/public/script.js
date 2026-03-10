@@ -2,19 +2,18 @@
     const loader = document.getElementById('loader');
     const bar = document.getElementById('loaderBar');
 
-    // Collect every image src used as a CSS background or <img>
-    const mediaSrcs = ['media/sun.png'];
+    let total = 0;
     let loaded = 0;
-    const total = mediaSrcs.length;
+    let done = false;
 
     function setProgress(p) {
-        // p: 0.0 – 1.0
-        bar.style.width = (p * 100) + '%';
+        bar.style.width = (Math.min(p, 1) * 100) + '%';
     }
 
     function onDone() {
+        if (done) return;
+        done = true;
         setProgress(1);
-        // Remove loading class first so page is visible beneath the loader
         document.body.classList.remove('loading');
         setTimeout(function () {
             gsap.to(loader, {
@@ -28,19 +27,38 @@
         }, 350);
     }
 
-    function onAssetLoad() {
+    function onAssetReady() {
         loaded++;
         setProgress(loaded / total);
         if (loaded >= total) onDone();
     }
 
-    mediaSrcs.forEach(function (src) {
+    // --- Images (CSS background assets) ---
+    const imageSrcs = ['media/sun.png'];
+
+    // --- Videos: pick up every <video> element in the document ---
+    const videoEls = Array.from(document.querySelectorAll('video'));
+
+    total = imageSrcs.length + videoEls.length;
+
+    // Track images
+    imageSrcs.forEach(function (src) {
         const img = new Image();
-        img.onload = onAssetLoad;
-        img.onerror = onAssetLoad; // count errors too so we never hang
+        img.onload = onAssetReady;
+        img.onerror = onAssetReady;
         img.src = src;
     });
 
-    // Fallback: force-complete after 6s regardless
-    setTimeout(onDone, 6000);
+    // Track videos
+    videoEls.forEach(function (video) {
+        if (video.readyState >= 4) {
+            onAssetReady();
+        } else {
+            video.addEventListener('canplaythrough', onAssetReady, { once: true });
+            video.addEventListener('error', onAssetReady, { once: true });
+        }
+    });
+
+    // Fallback: force transition after 8s 
+    setTimeout(onDone, 8000);
 })();

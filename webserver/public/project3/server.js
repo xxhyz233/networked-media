@@ -37,7 +37,7 @@ app.post('/submit', (request, response) => {
     const { name, email, message } = request.body;
     if (name && email && message) {
         const rawIp = (request.headers['x-forwarded-for'] || request.socket.remoteAddress || '').split(',')[0].trim();
-        // Strip IPv6-mapped prefix; treat loopback as local
+        // IPv6 address
         const ip = rawIp.replace(/^::ffff:/, '');
         const isLocal = ip === '::1' || ip === '127.0.0.1';
         const geo = isLocal ? null : geoip.lookup(ip);
@@ -58,6 +58,4 @@ app.post('/submit', (request, response) => {
     response.redirect('/#join');
 })
 
-app.listen(11451, ()=>{
-    console.log('123')
-})
+app.listen(11451, () => {})

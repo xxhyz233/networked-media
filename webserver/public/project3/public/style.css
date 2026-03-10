@@ -60,16 +60,9 @@ html, body {
     background-attachment: fixed;
 }
 
-/* Individual section backgrounds - can be customized per section */
-.parallax-section:nth-child(1) {
-    background-image: url('media/sun.png');
-}
-
 .parallax-section:nth-child(2) {
     background-image: none;
 }
-
-/* Video background */
 .section-video {
     position: absolute;
     inset: 0;
@@ -77,18 +70,6 @@ html, body {
     height: 100%;
     object-fit: cover;
     z-index: 0;
-}
-
-.parallax-section:nth-child(3) {
-    background-image: url('media/sun.png');
-}
-
-.parallax-section:nth-child(4) {
-    background-image: url('media/sun.png');
-}
-
-.parallax-section:nth-child(5) {
-    background-image: url('media/sun.png');
 }
 
 /* Section Content */
@@ -329,7 +310,7 @@ html, body {
     font-size: 0.8rem;
     white-space: nowrap;
     transition: color 0.3s ease;
-    font-weight: 104000;
+    font-weight: 500;
     text-transform: uppercase;
 }
 
@@ -339,53 +320,4 @@ html, body {
 
 .progress-item:hover .progress-label {
     color: rgba(255, 255, 255, 0.6);
-}
-
-/* Responsive Design */
-@media (max-width: 768px) {
-    .section-content h1 {
-        font-size: 2.5rem;
-    }
-
-    .section-content p {
-        font-size: 1.1rem;
-    }
-
-    .section-content {
-        padding: 20px;
-    }
-
-    .progress-bar {
-        left: 15px;
-    }
-
-    .progress-item {
-        padding: 8px 0 8px 12px;
-    }
-
-    .progress-label {
-        font-size: 0.55rem;
-    }
-}
-
-@media (max-width: 480px) {
-    .section-content h1 {
-        font-size: 1.8rem;
-    }
-
-    .section-content p {
-        font-size: 0.9rem;
-    }
-
-    .parallax-section {
-        height: 80vh;
-    }
-
-    .progress-bar {
-        left: 12px;
-    }
-
-    .progress-label {
-        display: none;
-    }
 }
