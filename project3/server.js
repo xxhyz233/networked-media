@@ -29,7 +29,7 @@ function savePosts(posts) {
     fs.writeFileSync(POSTS_FILE, JSON.stringify(posts, null, 2), 'utf8');
 }
 
-app.get('/', (request, response) => {
+app.get('/project3/', (request, response) => {
     response.render('index.ejs', { clientPosts: loadPosts() });
 })
 
