@@ -1,0 +1,26 @@
+[
+  {
+    "name": "random",
+    "email": "randomjoe@gmail.com",
+    "message": "WHERE DO I JOIN",
+    "date": "Mar 9, 2026",
+    "ip": "162.243.189.146",
+    "location": "New York, US"
+  },
+  {
+    "name": "ANON",
+    "email": "ANON@gmail.com",
+    "message": "??",
+    "date": "Mar 9, 2026",
+    "ip": "66.174.43.145",
+    "location": "Dallas, US"
+  },
+  {
+    "name": "CIALLO",
+    "email": "223@gmail.com",
+    "message": "Looks cool, sign me up.",
+    "date": "Mar 9, 2026",
+    "ip": "207.97.227.239",
+    "location": "San Antonio, US"
+  }
+]

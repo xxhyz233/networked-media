@@ -64,7 +64,7 @@ app.post('/upload', upload.single('theimage'), (req, res) => {
 
 	// what does the push function do?
 	// A: Adds the data to the global array var
-	posts.push(data);
+	serverStoredPosts.push(data);
 
 	resopnse.redirect('/');
 });

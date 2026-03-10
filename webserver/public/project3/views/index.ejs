@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Landing Page</title>
+        <link rel="stylesheet" href="style.css">
+        <link href="https://fonts.cdnfonts.com/css/helvetica-neue-55" rel="stylesheet">
+    </head>
+    <body class="loading">
+        <!-- Loading Screen -->
+        <div class="loader" id="loader">
+            <div class="loader-bar-track">
+                <div class="loader-bar" id="loaderBar"></div>
+            </div>
+        </div>
+
+        <!-- Progress Bar Navigation -->
+        <div class="progress-bar">
+            <div class="progress-item" data-section="0">
+                <div class="progress-dot"></div>
+                <span class="progress-label">THE FLAME</span>
+            </div>
+            <div class="progress-item" data-section="1">
+                <div class="progress-dot"></div>
+                <span class="progress-label">CHEMISTRY</span>
+            </div>
+            <div class="progress-item" data-section="2">
+                <div class="progress-dot"></div>
+                <span class="progress-label">CIVILIZATION</span>
+            </div>
+            <div class="progress-item" data-section="3">
+                <div class="progress-dot"></div>
+                <span class="progress-label">REKINDLE</span>
+            </div>
+            <div class="progress-item" data-section="4">
+                <div class="progress-dot"></div>
+                <span class="progress-label">JOIN US</span>
+            </div>
+        </div>
+
+        <!-- Section 1 -->
+        <section class="parallax-section" data-parallax="0.5">
+            <div class="section-content">
+                <h3>WELCOME</h3>
+                <h1>The Flame</h1>
+                <p>We are dedicated to the distribution of Flame, the single most powerful discovery in human history.</p>
+                <div class="square-container">
+                    <div class="square"></div>
+                </div>
+                <p class="quote-text">“I gave them intelligence,
+                </br>I made them
+                </br>    masters of their own thought.”
+                </br>     - Prometheus.</p>
+            </div>
+        </section>
+
+        <!-- Section 2 -->
+        <section class="parallax-section video-section" data-parallax="0.5">
+            <video class="section-video" autoplay muted loop playsinline>
+                <source src="media/2.mp4" type="video/mp4">
+            </video>
+            <div class="section-content left-align">
+                <h3>CHEMISTRY</h3>
+                <div class="square-container narrow-margin left-align">
+                    <div class="square"></div>
+                </div>
+                <h2>Gasoline </br>
+                    &nbsp;&nbsp; Alcohol </br>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Propane</h2>
+                <br/>
+                <br/>
+                <p>A flicker of entropy wakes up a fiery cascade of molecular motion, vaporizing every matter it touches — where every reaction an unrepeatable performance.</p>
+            </div>
+        </section>
+
+        <!-- Section 3 -->
+        <section class="parallax-section" data-parallax="0.5">
+            <video class="section-video" autoplay muted loop playsinline>
+                <source src="media/3.mp4" type="video/mp4">
+            </video>
+            <div class="section-content left-align">
+                <h3>CIVILIZATION</h3>
+                <div class="square-container narrow-margin left-align">
+                    <div class="square"></div>
+                </div>
+                <h2>We’re built by the Flame.</h2>
+                <br/>
+                <br/>
+                <p>Every engine, every rocket, and every spark of electricity keeps the original campfire burning, and we are the flame that refused to go out.</p>
+            </div>
+        </section>
+
+        <!-- Section 4 -->
+        <section class="parallax-section" data-parallax="0.5">
+            <video class="section-video" autoplay muted loop playsinline>
+                <source src="media/4.mp4" type="video/mp4">
+            </video>
+            <div class="section-content left-align">
+                <h3>REKINDLE</h3>
+                <div class="square-container narrow-margin left-align">
+                    <div class="square"></div>
+                </div>
+                <h2>Spread the flame.</h2>
+                <br/>
+                <br/>
+                <p>Fire made our ancestors conquer the world, and it’s our duty to rekindle it.</p>
+            </div>
+        </section>
+
+        <!-- Section 5 -->
+        <section class="parallax-section join-section" id="join" data-parallax="0.5">
+            <div class="section-content join-content">
+                <h3>JOIN US</h3>
+                <h2>Be a part of the Flame, today.</h2>
+
+                <form class="join-form" action="/submit" method="POST">
+                    <div class="form-row">
+                        <input type="text" name="name" placeholder="Your name" required maxlength="80" />
+                        <input type="email" name="email" placeholder="Your email" required maxlength="120" />
+                    </div>
+                    <textarea name="message" placeholder="Your message" required maxlength="500"></textarea>
+                    <button type="submit">SUBMIT</button>
+                </form>
+
+                <% if (clientPosts.length > 0) { %>
+                <div class="submissions">
+                    <% clientPosts.slice().reverse().forEach(post => { %>
+                    <div class="submission-item">
+                        <div class="submission-meta">
+                            <span class="submission-name"><%= post.name %></span>
+                            <% if (post.location) { %><span class="submission-ip"><%= post.location %></span><% } else if (post.ip) { %><span class="submission-ip"><%= post.ip %></span><% } %>
+                            <span class="submission-date"><%= post.date %></span>
+                        </div>
+                        <p class="submission-message"><%= post.message %></p>
+                    </div>
+                    <% }) %>
+                </div>
+                <% } %>
+            </div>
+        </section>
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.1/dist/gsap.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.1/dist/ScrollTrigger.min.js"></script>
+        <script src="script.js"></script>
+        <script src="parallax.js"></script>
+    </body>
+</html>
