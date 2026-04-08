@@ -12,10 +12,13 @@
   "type": "commonjs",
   "dependencies": {
     "@seald-io/nedb": "^4.1.2",
+    "axios": "^1.15.0",
+    "cheerio": "^1.2.0",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "jsdom": "^29.0.2",
     "masto": "^7.10.2",
-    "nedb": "^1.8.0"
+    "nedb": "^1.8.0",
+    "wikipedia": "^2.4.2"
   }
 }
