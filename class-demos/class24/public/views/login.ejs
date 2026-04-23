@@ -1,8 +1,11 @@
 <html>
     <head>
         <title>Login</title>
+        <link href="style.css" rel="stylesheet"/>
     </head>
     <body>
+        <!-- Inject the entire nav.ejs file as header -->
+        <%- include('nav.ejs') %>
         <form method="POST" action="/authenticate">
             <input type="text" name="username"/>
             <input type="password" name="pass"/> 
