@@ -10,7 +10,7 @@ async function initializeNarrative() {
   // TypingScene and TextScene are DOM-based animations
   // VideoScene is Three.js 3D environment
   const typingScene = new TypingScene(sceneManager);
-  const videoScene = new VideoScene();
+  const videoScene = new VideoScene(sceneManager);
   const textScene = new TextScene();
 
   // Register scenes in manager
@@ -18,7 +18,7 @@ async function initializeNarrative() {
   sceneManager.registerScene('video', videoScene);
   sceneManager.registerScene('text', textScene);
 
-  // Start with typing scene for debugging
+  // Start with typing scene
   await sceneManager.transitionTo('typing');
 
   // Start main animation loop that handles all scenes

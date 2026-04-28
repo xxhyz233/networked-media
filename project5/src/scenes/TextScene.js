@@ -1,108 +1,134 @@
-// Text Scene: Animated "HBD" text display
-
 import * as Tone from 'tone';
-import { AudioManager } from '../utils/AudioManager.js';
 
 export class TextScene {
   constructor() {
-    this.container = null;
-    this.textElement = null;
-    this.animationTime = 0;
-    this.animationDuration = 4000; // 4 seconds
-    this.isPlaying = false;
-    this.audioManager = null;
-    this.celebratorySynth = null;
+    this._clockInterval = null;
+    this._blinkTimeout = null;
+    this._player = null;
+    this._lofiChain = null;
   }
 
   async init() {
-    this.container = document.createElement('div');
-    this.container.style.cssText = 'width:100%;height:100%;background:#000;display:flex;justify-content:center;align-items:center;';
-    this.textElement = document.createElement('div');
-    this.textElement.textContent = 'HBD';
-    this.textElement.style.cssText = 'font-size:120px;color:#ff00ff;font-weight:bold;text-shadow:0 0 20px #ff00ff;animation:pulse 2s ease-in-out infinite;';
-    this.container.appendChild(this.textElement);
     document.body.innerHTML = '';
-    document.body.appendChild(this.container);
-    const style = document.createElement('style');
-    style.innerHTML = '@keyframes pulse { 0%, 100% { transform: scale(1); opacity:1; } 50% { transform: scale(1.2); opacity:0.8; } }';
-    document.head.appendChild(style);
-    
-    // Initialize audio system with celebratory synth
-    this.audioManager = new AudioManager();
-    await this.audioManager.init('text');
-    
-    // Ensure context is started then create synth
-    await this.audioManager.ensureContextStarted();
-    this.playCelebratorySynth();
-  }
-  
-  playCelebratorySynth() {
-    try {
-      // Create a simple celebratory synth melody
-      const synth = new Tone.Synth({
-        oscillator: { type: 'triangle' },
-        envelope: { attack: 0.05, decay: 0.2, sustain: 0.1, release: 0.2 },
-      }).toDestination();
+    document.body.style.cssText = 'margin:0;background:#f5f5f5;';
+
+    // Wrapper
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = `
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    `;
+
+    // Prompt text
+    const prompt = document.createElement('div');
+    prompt.style.cssText = `
+      font-family: 'Courier New', Courier, monospace;
+      font-size: clamp(18px, 2.4vw, 32px);
+      color: #1a1a1a;
+      letter-spacing: 0.18em;
+      opacity: 0;
+      transition: opacity 1.2s ease;
+    `;
+
+    const updateText = () => {
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const ss = String(now.getSeconds()).padStart(2, '0');
       
-      // Simple ascending melody: G4 → B4 → D5 → G5
-      const notes = ['G4', 'B4', 'D5', 'G5'];
-      const now = Tone.now();
-      
-      notes.forEach((note, index) => {
-        synth.triggerAttackRelease(note, '8n', now + index * 0.3);
+      prompt.innerHTML = `HBD. <span class="date-highlight">04.28</span>  ${hh}:${mm}:${ss}`;
+    };
+
+    updateText();
+    this._clockInterval = setInterval(updateText, 1000);
+
+    wrapper.appendChild(prompt);
+    document.body.appendChild(wrapper);
+
+    // Fade in after first paint
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        prompt.style.opacity = '1';
       });
-      
-      // Loop the melody every 1.5 seconds
-      const loopInterval = setInterval(() => {
-        const loopNow = Tone.now();
-        notes.forEach((note, index) => {
-          synth.triggerAttackRelease(note, '8n', loopNow + index * 0.3);
-        });
-      }, 1500);
-      
-      this.celebratorySynth = { synth, loopInterval };
-    } catch (error) {
-      console.error('Error creating celebratory synth:', error);
+    });
+
+    // Random-interval blink on the date span
+    const scheduleNextBlink = () => {
+      const delay = 800 + Math.random() * 3200; // 0.8s – 4s between blinks
+      this._blinkTimeout = setTimeout(() => {
+        const dateEl = document.querySelector('.date-highlight');
+        if (!dateEl) return;
+        // Toggle to inverted style
+        dateEl.style.backgroundColor = '#f5f5f5';
+        dateEl.style.color = '#1500ff';
+        dateEl.style.outline = '1px solid #1500ff';
+        // Restore after a short random flash duration
+        const flashDuration = 80 + Math.random() * 200; // 80–280ms
+        setTimeout(() => {
+          const el = document.querySelector('.date-highlight');
+          if (!el) return;
+          el.style.backgroundColor = '';
+          el.style.color = '';
+          el.style.outline = '';
+        }, flashDuration);
+        scheduleNextBlink();
+      }, delay);
+    };
+    scheduleNextBlink();
+
+    // ── Lofi audio ────────────────────────────────────────────────────────────
+    // AudioContext requires a user gesture — start on first interaction
+    const startOnGesture = () => {
+      document.removeEventListener('click', startOnGesture);
+      document.removeEventListener('keydown', startOnGesture);
+      this._startAudio();
+    };
+    document.addEventListener('click', startOnGesture);
+    document.addEventListener('keydown', startOnGesture);
+  }
+
+  async _startAudio() {
+    try {
+      const vol = new Tone.Volume(-6).toDestination();
+      const lpf = new Tone.Filter(600, 'lowpass', -24).connect(vol);
+      const crusher = new Tone.BitCrusher(8).connect(lpf);
+      const vibrato = new Tone.Vibrato({ frequency: 3.5, depth: 0.04, type: 'sine' }).connect(crusher);
+
+      this._player = new Tone.Player({
+        url: '/audio/Nizikawa.mp3',
+        loop: true,
+        onload: () => this._player.start(),
+      }).connect(vibrato);
+
+      this._lofiChain = { vol, lpf, crusher, vibrato };
+
+      // Resume AudioContext on gesture — playback starts via onload once loaded
+      await Tone.start();
+    } catch (e) {
+      console.error('TextScene audio error:', e);
     }
-  }
-
-  createTextElement() {
-    // Create div with "HBD" text
-    // Style with large font, centered, glowing effect
-    // Add to DOM
-  }
-
-  animate(deltaTime) {
-    // Update animation progress (0 to 1)
-    // Apply CSS transform updates:
-    //   - Scale in
-    //   - Rotation
-    //   - Opacity effects
-    // Update animation time
-  }
-
-  isAnimationComplete() {
-    // Return true when animation duration elapsed
   }
 
   cleanup() {
-    if (this.celebratorySynth) {
-      clearInterval(this.celebratorySynth.loopInterval);
-      try {
-        this.celebratorySynth.synth.dispose();
-      } catch (e) {
-        // Already disposed
-      }
-      this.celebratorySynth = null;
+    if (this._clockInterval) {
+      clearInterval(this._clockInterval);
+      this._clockInterval = null;
     }
-    
-    if (this.audioManager) {
-      this.audioManager.cleanup();
-      this.audioManager = null;
+    if (this._blinkTimeout) {
+      clearTimeout(this._blinkTimeout);
+      this._blinkTimeout = null;
     }
-    
-    if (this.container) {
-      this.container.remove();
+    if (this._player) {
+      this._player.stop();
+      this._player.dispose();
+      this._player = null;
+    }
+    if (this._lofiChain) {
+      Object.values(this._lofiChain).forEach(n => n.dispose());
+      this._lofiChain = null;
     }
   }
 }

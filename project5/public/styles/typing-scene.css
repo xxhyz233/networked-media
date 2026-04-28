@@ -1,0 +1,157 @@
+/* =============================================================================
+   TYPING SCENE — scene-specific styles
+   Loaded by index.html + injected as fallback in addGlobalStyles()
+   ============================================================================= */
+
+/* ── Cursor blink ──────────────────────────────────────────────────────────── */
+@keyframes blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.prompt-cursor {
+  animation: blink 1s infinite;
+  color: white;
+}
+
+/* ── General typing text — base class for both Stage 1 and Stage 2 ──────────── */
+.typing-text {
+  font-family: 'Courier New', monospace;
+  color: white;
+  display: inline-block;
+}
+
+/* ── Phase 1 prompt layout ──────────────────────────────────────────────────── */
+.prompt-char {
+  display: inline-block;
+}
+
+/* ── Phase 2 code column layout ─────────────────────────────────────────────── */
+/* will-change promotes each column to its own compositor layer, reducing repaint cost */
+.code-column {
+  will-change: transform, opacity;
+  overflow: hidden;
+  height: 100%;
+  padding: 28px 16px;
+  box-sizing: border-box;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  color: white;
+}
+
+.code-line {
+  margin: 0;
+  line-height: 1.6;
+  min-height: 1.6em;
+  white-space: pre;  /* preserves Dart indentation */
+  color: white;
+}
+
+/* Subtle opacity tint per line cycle (5 colours) */
+/* ─── TWEAKABLE: change opacity/scale values to adjust line contrast ─────── */
+/* transform-origin: left top  → scale expands right+down, never into neighbours
+   margin-bottom compensates for the extra visual height so lines don't overlap */
+.lc-0 { opacity: 1; }
+.lc-1 { opacity: 1; }
+.lc-2 { opacity: 1; }
+.lc-3 { opacity: 1; }
+.lc-4 { opacity: 1; }
+
+/* ── Keyword colour classes ──────────────────────────────────────────────────
+   These map to COLOR_STYLES in TypingScene.js.
+   ─── TWEAKABLE: change hex values to restyle keyword highlights ──────────── */
+.kw-orange { color: white; background-color: gray; font-size:1rem}
+.kw-yellow { font-weight: bold; color: black; background-color: #fffb00; font-size:1rem }
+.kw-blue   { font-weight: bold; color: white; background-color: #1500ff; }
+.kw-red    { color: white; background-color: #ff0000; font-family:'Wingdings' }
+
+/* ── Date highlight for TextScene ───────────────────────────────────────────── */
+.date-highlight { background-color: #1500ff; color: white; padding: 0 4px; }
+
+/* ── Special highlight for EXISTENCE in Phase 1 prompt ────────────────────── */
+.existence-highlight { color: white; background-color: #1500ff; }
+
+/* ── Word span base: inline-block so GSAP transforms (scale, filter) work ─── */
+.word-span {
+  display: inline-block;
+}
+
+/* ── Newly-typed word highlight ──────────────────────────────────────────────
+   Applied to every span the moment it is rendered, removed after NEW_WORD_DURATION ms.
+   ─── TWEAKABLE: change background/color/outline/transition to restyle ────── */
+.word-fresh {
+  color: white;
+  background-color: black;
+  transition: background-color 0.3s ease, outline-color 0.3s ease;
+  border: 1px solid #1500ff;
+}
+
+/* ── Special character flicker highlight ─────────────────────────────────────
+   Applied by tickSpecialCharFlicker() to spans containing (){}[],;.'"/@///
+   when they are selected by the special-char ticker. Cycles through the same
+   kw-* color classes as the random-word flicker for visual consistency.
+   ─── TWEAKABLE: add distinct overrides here to make punctuation flicker look
+       different from regular word flicker ─────────────────────────────────── */
+.kw-special {
+  color: white;
+  background-color: black;
+  font-weight: bold;
+}
+
+/* ── Text selection highlight ──────────────────────────────────────────────── */
+::selection {
+  background-color: #1500ff;
+}
+::-moz-selection {
+  background-color: #1500ff;
+}
+
+/* ── Background layer (decorative) ─────────────────────────────────────────── */
+.background-layer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.04);
+  white-space: pre-wrap;
+  overflow: hidden;
+  z-index: 1;
+  line-height: 1.5;
+  padding: 20px;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+/* ── Typing line (Phase 1 input area) ──────────────────────────────────────── */
+.typing-line {
+  white-space: pre-wrap;
+  word-break: break-all;
+  min-height: 1.8em;
+}
+
+/* ── Prompt character (individual chars in Phase 1) ────────────────────────── */
+.prompt-char {
+  opacity: 0;
+  display: inline-block;
+}
+
+/* ── Full-screen code container — visible from Phase 1 ─────────────────────── */
+.fullscreen-code {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  z-index: 15;
+  background: #000000;
+}
+
+/* ── Non-middle columns hidden during Phase 1; removed at Phase 2 trigger ──── */
+.code-column--offstage {
+  visibility: hidden;
+}

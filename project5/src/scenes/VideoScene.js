@@ -1,10 +1,12 @@
 import * as THREE from 'three';
+import gsap from 'gsap';
 import { AudioManager } from '../utils/AudioManager.js';
 
 // Video Scene: 360 degree interactive video playback with hotspots (only Three.js scene)
 
 export class VideoScene {
-  constructor() {
+  constructor(sceneManager) {
+    this.sceneManager = sceneManager || null;
     this.camera = null;
     this.scene = null;
     this.renderer = null;
@@ -44,25 +46,25 @@ export class VideoScene {
     const light = new THREE.AmbientLight(0xffffff, 1);
     this.scene.add(light);
     
-    // Debug UI
-    const debugUI = document.createElement('div');
-    debugUI.style.cssText = 'position:absolute;top:10px;left:10px;background:rgba(0,0,0,0.8);color:#0f0;padding:15px;font-family:monospace;font-size:12px;border:1px solid #0f0;max-width:300px;';
-    debugUI.innerHTML = `
-      <div>Playback Rate (W/S or slider):</div>
-      <input type="range" id="playback-slider" min="-10" max="10" step="0.1" value="0" style="width:200px;">
-      <div id="playback-value">0.0x (paused)</div>
-      <div style="margin-top:10px;border-top:1px solid #0f0;padding-top:10px;">
-        <div>Video Status:</div>
-        <div id="video-status">Loading...</div>
-        <div id="video-duration" style="font-size:11px;margin-top:5px;">Duration: --:--</div>
-        <div id="video-current" style="font-size:11px;">Current: --:--</div>
-        <div id="video-buffered" style="font-size:11px;">Buffered: 0%</div>
-      </div>
-    `;
-    document.body.appendChild(debugUI);
-    
-    const slider = document.getElementById('playback-slider');
-    const valueDisplay = document.getElementById('playback-value');
+    // Debug UI (commented out)
+    // const debugUI = document.createElement('div');
+    // debugUI.style.cssText = 'position:absolute;top:10px;left:10px;background:rgba(0,0,0,0.8);color:#0f0;padding:15px;font-family:monospace;font-size:12px;border:1px solid #0f0;max-width:300px;';
+    // debugUI.innerHTML = `
+    //   <div>Playback Rate (W/S or slider):</div>
+    //   <input type="range" id="playback-slider" min="-10" max="10" step="0.1" value="0" style="width:200px;">
+    //   <div id="playback-value">0.0x (paused)</div>
+    //   <div style="margin-top:10px;border-top:1px solid #0f0;padding-top:10px;">
+    //     <div>Video Status:</div>
+    //     <div id="video-status">Loading...</div>
+    //     <div id="video-duration" style="font-size:11px;margin-top:5px;">Duration: --:--</div>
+    //     <div id="video-current" style="font-size:11px;">Current: --:--</div>
+    //     <div id="video-buffered" style="font-size:11px;">Buffered: 0%</div>
+    //   </div>
+    // `;
+    // document.body.appendChild(debugUI);
+
+    const slider = { value: 0 }; // stub (debug UI off)
+    const valueDisplay = { textContent: '' }; // stub
     
     try {
       const response = await fetch('/api/scenes?id=video');
@@ -72,29 +74,7 @@ export class VideoScene {
       console.error('Failed to load video scene:', error);
     }
     
-    slider.addEventListener('input', (e) => {
-      const rate = parseFloat(e.target.value);
-      const label = rate === 0 ? 'paused' : (rate > 0 ? 'forward' : 'backward');
-      valueDisplay.textContent = rate.toFixed(1) + 'x (' + label + ')';
-      
-      if (rate > 0) {
-        this.videoElement.playbackRate = rate;
-        this.videoElement.play();
-        clearInterval(this.backwardInterval);
-      } else if (rate < 0) {
-        this.videoElement.pause();
-        clearInterval(this.backwardInterval);
-        const speed = Math.abs(rate);
-        this.backwardInterval = setInterval(() => {
-          if (this.videoElement.currentTime > 0) {
-            this.videoElement.currentTime = Math.max(0, this.videoElement.currentTime - 0.016 * speed);
-          }
-        }, 16);
-      } else {
-        this.videoElement.pause();
-        clearInterval(this.backwardInterval);
-      }
-    });
+    // slider.addEventListener (debug UI off — slider is a stub)
     
     let isDragging = false;
     let previousMousePosition = { x: 0, y: 0 };
@@ -182,49 +162,33 @@ export class VideoScene {
   setupVideo(videoPath) {
     this.videoElement = document.createElement('video');
     this.videoElement.src = videoPath;
-    this.videoElement.loop = true;
     this.videoElement.crossOrigin = 'anonymous';
     this.videoElement.preload = 'auto';
     
-    const statusEl = document.getElementById('video-status');
-    const durationEl = document.getElementById('video-duration');
-    const currentEl = document.getElementById('video-current');
-    const bufferedEl = document.getElementById('video-buffered');
-    
-    this.videoElement.addEventListener('loadstart', () => {
-      statusEl.textContent = 'Loading video...';
-    });
-    
-    this.videoElement.addEventListener('canplay', () => {
-      statusEl.textContent = 'Ready to play ✓';
-    });
-    
-    this.videoElement.addEventListener('progress', () => {
-      if (this.videoElement.buffered.length > 0) {
-        const bufferedEnd = this.videoElement.buffered.end(this.videoElement.buffered.length - 1);
-        const duration = this.videoElement.duration;
-        const percent = duration ? Math.round((bufferedEnd / duration) * 100) : 0;
-        bufferedEl.textContent = `Buffered: ${percent}%`;
-      }
-    });
-    
-    this.videoElement.addEventListener('timeupdate', () => {
-      const current = Math.floor(this.videoElement.currentTime);
-      const mins = Math.floor(current / 60);
-      const secs = current % 60;
-      currentEl.textContent = `Current: ${mins}:${secs.toString().padStart(2, '0')}`;
-    });
-    
-    this.videoElement.addEventListener('loadedmetadata', () => {
-      const duration = Math.floor(this.videoElement.duration);
-      const mins = Math.floor(duration / 60);
-      const secs = duration % 60;
-      durationEl.textContent = `Duration: ${mins}:${secs.toString().padStart(2, '0')}`;
-    });
-    
     this.videoElement.addEventListener('error', (e) => {
-      statusEl.textContent = 'Error loading video!';
       console.error('Video error:', e);
+    });
+
+    this.videoElement.addEventListener('ended', () => {
+      // Lock to last frame — prevent any replay
+      this.videoElement.pause();
+      this.videoElement.currentTime = this.videoElement.duration;
+
+      // Fade to white over 1.5s, then transition to text scene
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:#fff;opacity:0;z-index:9999;pointer-events:none;';
+      document.body.appendChild(overlay);
+
+      gsap.to(overlay, {
+        opacity: 1,
+        duration: 1.5,
+        ease: 'power1.inOut',
+        onComplete: () => {
+          if (this.sceneManager) {
+            this.sceneManager.transitionTo('text').catch(console.error);
+          }
+        },
+      });
     });
     
     this.videoTexture = new THREE.VideoTexture(this.videoElement);

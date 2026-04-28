@@ -14532,6 +14532,9 @@
     "A#",
     "B"
   ];
+  function Frequency(value, units) {
+    return new FrequencyClass(getContext(), value, units);
+  }
 
   // node_modules/tone/build/esm/core/type/TransportTime.js
   var TransportTimeClass = class extends TimeClass {
@@ -16551,6 +16554,52 @@
     }
   };
   Emitter.mixin(Clock);
+
+  // node_modules/tone/build/esm/core/context/Delay.js
+  var Delay = class _Delay extends ToneAudioNode {
+    constructor() {
+      const options = optionsFromArguments(_Delay.getDefaults(), arguments, [
+        "delayTime",
+        "maxDelay"
+      ]);
+      super(options);
+      this.name = "Delay";
+      const maxDelayInSeconds = this.toSeconds(options.maxDelay);
+      this._maxDelay = Math.max(maxDelayInSeconds, this.toSeconds(options.delayTime));
+      this._delayNode = this.input = this.output = this.context.createDelay(maxDelayInSeconds);
+      this.delayTime = new Param({
+        context: this.context,
+        param: this._delayNode.delayTime,
+        units: "time",
+        value: options.delayTime,
+        minValue: 0,
+        maxValue: this.maxDelay
+      });
+      readOnly(this, "delayTime");
+    }
+    static getDefaults() {
+      return Object.assign(ToneAudioNode.getDefaults(), {
+        delayTime: 0,
+        maxDelay: 1
+      });
+    }
+    /**
+     * The maximum delay time. This cannot be changed after
+     * the value is passed into the constructor.
+     */
+    get maxDelay() {
+      return this._maxDelay;
+    }
+    /**
+     * Clean up.
+     */
+    dispose() {
+      super.dispose();
+      this._delayNode.disconnect();
+      this.delayTime.dispose();
+      return this;
+    }
+  };
 
   // node_modules/tone/build/esm/component/channel/Volume.js
   var Volume = class _Volume extends ToneAudioNode {
@@ -20260,6 +20309,313 @@
     }
   };
 
+  // node_modules/tone/build/esm/signal/Add.js
+  var Add = class _Add extends Signal {
+    constructor() {
+      super(optionsFromArguments(_Add.getDefaults(), arguments, ["value"]));
+      this.override = false;
+      this.name = "Add";
+      this._sum = new Gain({ context: this.context });
+      this.input = this._sum;
+      this.output = this._sum;
+      this.addend = this._param;
+      connectSeries(this._constantSource, this._sum);
+    }
+    static getDefaults() {
+      return Object.assign(Signal.getDefaults(), {
+        value: 0
+      });
+    }
+    dispose() {
+      super.dispose();
+      this._sum.dispose();
+      return this;
+    }
+  };
+
+  // node_modules/tone/build/esm/signal/Scale.js
+  var Scale = class _Scale extends SignalOperator {
+    constructor() {
+      const options = optionsFromArguments(_Scale.getDefaults(), arguments, [
+        "min",
+        "max"
+      ]);
+      super(options);
+      this.name = "Scale";
+      this._mult = this.input = new Multiply({
+        context: this.context,
+        value: options.max - options.min
+      });
+      this._add = this.output = new Add({
+        context: this.context,
+        value: options.min
+      });
+      this._min = options.min;
+      this._max = options.max;
+      this.input.connect(this.output);
+    }
+    static getDefaults() {
+      return Object.assign(SignalOperator.getDefaults(), {
+        max: 1,
+        min: 0
+      });
+    }
+    /**
+     * The minimum output value. This number is output when the value input value is 0.
+     */
+    get min() {
+      return this._min;
+    }
+    set min(min) {
+      this._min = min;
+      this._setRange();
+    }
+    /**
+     * The maximum output value. This number is output when the value input value is 1.
+     */
+    get max() {
+      return this._max;
+    }
+    set max(max) {
+      this._max = max;
+      this._setRange();
+    }
+    /**
+     * set the values
+     */
+    _setRange() {
+      this._add.value = this._min;
+      this._mult.value = this._max - this._min;
+    }
+    dispose() {
+      super.dispose();
+      this._add.dispose();
+      this._mult.dispose();
+      return this;
+    }
+  };
+
+  // node_modules/tone/build/esm/signal/Zero.js
+  var Zero = class _Zero extends SignalOperator {
+    constructor() {
+      super(optionsFromArguments(_Zero.getDefaults(), arguments));
+      this.name = "Zero";
+      this._gain = new Gain({ context: this.context });
+      this.output = this._gain;
+      this.input = void 0;
+      connect(this.context.getConstant(0), this._gain);
+    }
+    /**
+     * clean up
+     */
+    dispose() {
+      super.dispose();
+      disconnect(this.context.getConstant(0), this._gain);
+      return this;
+    }
+  };
+
+  // node_modules/tone/build/esm/source/oscillator/LFO.js
+  var LFO = class _LFO extends ToneAudioNode {
+    constructor() {
+      const options = optionsFromArguments(_LFO.getDefaults(), arguments, [
+        "frequency",
+        "min",
+        "max"
+      ]);
+      super(options);
+      this.name = "LFO";
+      this._stoppedValue = 0;
+      this._units = "number";
+      this.convert = true;
+      this._fromType = Param.prototype._fromType;
+      this._toType = Param.prototype._toType;
+      this._is = Param.prototype._is;
+      this._clampValue = Param.prototype._clampValue;
+      this._oscillator = new Oscillator(options);
+      this.frequency = this._oscillator.frequency;
+      this._amplitudeGain = new Gain({
+        context: this.context,
+        gain: options.amplitude,
+        units: "normalRange"
+      });
+      this.amplitude = this._amplitudeGain.gain;
+      this._stoppedSignal = new Signal({
+        context: this.context,
+        units: "audioRange",
+        value: 0
+      });
+      this._zeros = new Zero({ context: this.context });
+      this._a2g = new AudioToGain({ context: this.context });
+      this._scaler = this.output = new Scale({
+        context: this.context,
+        max: options.max,
+        min: options.min
+      });
+      this.units = options.units;
+      this.min = options.min;
+      this.max = options.max;
+      this._oscillator.chain(this._amplitudeGain, this._a2g, this._scaler);
+      this._zeros.connect(this._a2g);
+      this._stoppedSignal.connect(this._a2g);
+      readOnly(this, ["amplitude", "frequency"]);
+      this.phase = options.phase;
+    }
+    static getDefaults() {
+      return Object.assign(Oscillator.getDefaults(), {
+        amplitude: 1,
+        frequency: "4n",
+        max: 1,
+        min: 0,
+        type: "sine",
+        units: "number"
+      });
+    }
+    /**
+     * Start the LFO.
+     * @param time The time the LFO will start
+     */
+    start(time) {
+      time = this.toSeconds(time);
+      this._stoppedSignal.setValueAtTime(0, time);
+      this._oscillator.start(time);
+      return this;
+    }
+    /**
+     * Stop the LFO.
+     * @param  time The time the LFO will stop
+     */
+    stop(time) {
+      time = this.toSeconds(time);
+      this._stoppedSignal.setValueAtTime(this._stoppedValue, time);
+      this._oscillator.stop(time);
+      return this;
+    }
+    /**
+     * Sync the start/stop/pause to the transport
+     * and the frequency to the bpm of the transport
+     * @example
+     * const lfo = new Tone.LFO("8n");
+     * lfo.sync().start(0);
+     * // the rate of the LFO will always be an eighth note, even as the tempo changes
+     */
+    sync() {
+      this._oscillator.sync();
+      this._oscillator.syncFrequency();
+      return this;
+    }
+    /**
+     * unsync the LFO from transport control
+     */
+    unsync() {
+      this._oscillator.unsync();
+      this._oscillator.unsyncFrequency();
+      return this;
+    }
+    /**
+     * After the oscillator waveform is updated, reset the `_stoppedSignal` value to match the updated waveform
+     */
+    _setStoppedValue() {
+      this._stoppedValue = this._oscillator.getInitialValue();
+      this._stoppedSignal.value = this._stoppedValue;
+    }
+    /**
+     * The minimum output of the LFO.
+     */
+    get min() {
+      return this._toType(this._scaler.min);
+    }
+    set min(min) {
+      min = this._fromType(min);
+      this._scaler.min = min;
+    }
+    /**
+     * The maximum output of the LFO.
+     */
+    get max() {
+      return this._toType(this._scaler.max);
+    }
+    set max(max) {
+      max = this._fromType(max);
+      this._scaler.max = max;
+    }
+    /**
+     * The type of the oscillator.
+     * @see {@link Oscillator.type}
+     */
+    get type() {
+      return this._oscillator.type;
+    }
+    set type(type) {
+      this._oscillator.type = type;
+      this._setStoppedValue();
+    }
+    /**
+     * The oscillator's partials array.
+     * @see {@link Oscillator.partials}
+     */
+    get partials() {
+      return this._oscillator.partials;
+    }
+    set partials(partials) {
+      this._oscillator.partials = partials;
+      this._setStoppedValue();
+    }
+    /**
+     * The phase of the LFO.
+     */
+    get phase() {
+      return this._oscillator.phase;
+    }
+    set phase(phase) {
+      this._oscillator.phase = phase;
+      this._setStoppedValue();
+    }
+    /**
+     * The output units of the LFO.
+     */
+    get units() {
+      return this._units;
+    }
+    set units(val) {
+      const currentMin = this.min;
+      const currentMax = this.max;
+      this._units = val;
+      this.min = currentMin;
+      this.max = currentMax;
+    }
+    /**
+     * Returns the playback state of the source, either "started" or "stopped".
+     */
+    get state() {
+      return this._oscillator.state;
+    }
+    /**
+     * @param node the destination to connect to
+     * @param outputNum the optional output number
+     * @param inputNum the input number
+     */
+    connect(node, outputNum, inputNum) {
+      if (node instanceof Param || node instanceof Signal) {
+        this.convert = node.convert;
+        this.units = node.units;
+      }
+      connectSignal(this, node, outputNum, inputNum);
+      return this;
+    }
+    dispose() {
+      super.dispose();
+      this._oscillator.dispose();
+      this._stoppedSignal.dispose();
+      this._zeros.dispose();
+      this._scaler.dispose();
+      this._a2g.dispose();
+      this._amplitudeGain.dispose();
+      this.amplitude.dispose();
+      return this;
+    }
+  };
+
   // node_modules/tone/build/esm/core/util/Decorator.js
   function range(min, max = Infinity) {
     const valueMap = /* @__PURE__ */ new WeakMap();
@@ -21307,6 +21663,248 @@
     }
   };
 
+  // node_modules/tone/build/esm/component/filter/BiquadFilter.js
+  var BiquadFilter = class _BiquadFilter extends ToneAudioNode {
+    constructor() {
+      const options = optionsFromArguments(_BiquadFilter.getDefaults(), arguments, ["frequency", "type"]);
+      super(options);
+      this.name = "BiquadFilter";
+      this._filter = this.context.createBiquadFilter();
+      this.input = this.output = this._filter;
+      this.Q = new Param({
+        context: this.context,
+        units: "number",
+        value: options.Q,
+        param: this._filter.Q
+      });
+      this.frequency = new Param({
+        context: this.context,
+        units: "frequency",
+        value: options.frequency,
+        param: this._filter.frequency
+      });
+      this.detune = new Param({
+        context: this.context,
+        units: "cents",
+        value: options.detune,
+        param: this._filter.detune
+      });
+      this.gain = new Param({
+        context: this.context,
+        units: "decibels",
+        convert: false,
+        value: options.gain,
+        param: this._filter.gain
+      });
+      this.type = options.type;
+    }
+    static getDefaults() {
+      return Object.assign(ToneAudioNode.getDefaults(), {
+        Q: 1,
+        type: "lowpass",
+        frequency: 350,
+        detune: 0,
+        gain: 0
+      });
+    }
+    /**
+     * The type of this BiquadFilterNode. For a complete list of types and their attributes, see the
+     * [Web Audio API](https://webaudio.github.io/web-audio-api/#dom-biquadfiltertype-lowpass)
+     */
+    get type() {
+      return this._filter.type;
+    }
+    set type(type) {
+      const types = [
+        "lowpass",
+        "highpass",
+        "bandpass",
+        "lowshelf",
+        "highshelf",
+        "notch",
+        "allpass",
+        "peaking"
+      ];
+      assert(types.indexOf(type) !== -1, `Invalid filter type: ${type}`);
+      this._filter.type = type;
+    }
+    /**
+     * Get the frequency response curve. This curve represents how the filter
+     * responses to frequencies between 20hz-20khz.
+     * @param  len The number of values to return
+     * @return The frequency response curve between 20-20kHz
+     */
+    getFrequencyResponse(len = 128) {
+      const freqValues = new Float32Array(len);
+      for (let i = 0; i < len; i++) {
+        const norm = Math.pow(i / len, 2);
+        const freq = norm * (2e4 - 20) + 20;
+        freqValues[i] = freq;
+      }
+      const magValues = new Float32Array(len);
+      const phaseValues = new Float32Array(len);
+      const filterClone = this.context.createBiquadFilter();
+      filterClone.type = this.type;
+      filterClone.Q.value = this.Q.value;
+      filterClone.frequency.value = this.frequency.value;
+      filterClone.gain.value = this.gain.value;
+      filterClone.getFrequencyResponse(freqValues, magValues, phaseValues);
+      return magValues;
+    }
+    dispose() {
+      super.dispose();
+      this._filter.disconnect();
+      this.Q.dispose();
+      this.frequency.dispose();
+      this.gain.dispose();
+      this.detune.dispose();
+      return this;
+    }
+  };
+
+  // node_modules/tone/build/esm/component/filter/Filter.js
+  var Filter = class _Filter extends ToneAudioNode {
+    constructor() {
+      const options = optionsFromArguments(_Filter.getDefaults(), arguments, [
+        "frequency",
+        "type",
+        "rolloff"
+      ]);
+      super(options);
+      this.name = "Filter";
+      this.input = new Gain({ context: this.context });
+      this.output = new Gain({ context: this.context });
+      this._filters = [];
+      this._filters = [];
+      this.Q = new Signal({
+        context: this.context,
+        units: "positive",
+        value: options.Q
+      });
+      this.frequency = new Signal({
+        context: this.context,
+        units: "frequency",
+        value: options.frequency
+      });
+      this.detune = new Signal({
+        context: this.context,
+        units: "cents",
+        value: options.detune
+      });
+      this.gain = new Signal({
+        context: this.context,
+        units: "decibels",
+        convert: false,
+        value: options.gain
+      });
+      this._type = options.type;
+      this.rolloff = options.rolloff;
+      readOnly(this, ["detune", "frequency", "gain", "Q"]);
+    }
+    static getDefaults() {
+      return Object.assign(ToneAudioNode.getDefaults(), {
+        Q: 1,
+        detune: 0,
+        frequency: 350,
+        gain: 0,
+        rolloff: -12,
+        type: "lowpass"
+      });
+    }
+    /**
+     * The type of the filter. Types: "lowpass", "highpass",
+     * "bandpass", "lowshelf", "highshelf", "notch", "allpass", or "peaking".
+     */
+    get type() {
+      return this._type;
+    }
+    set type(type) {
+      const types = [
+        "lowpass",
+        "highpass",
+        "bandpass",
+        "lowshelf",
+        "highshelf",
+        "notch",
+        "allpass",
+        "peaking"
+      ];
+      assert(types.indexOf(type) !== -1, `Invalid filter type: ${type}`);
+      this._type = type;
+      this._filters.forEach((filter) => filter.type = type);
+    }
+    /**
+     * The rolloff of the filter which is the drop in db
+     * per octave. Implemented internally by cascading filters.
+     * Only accepts the values -12, -24, -48 and -96.
+     */
+    get rolloff() {
+      return this._rolloff;
+    }
+    set rolloff(rolloff) {
+      const rolloffNum = isNumber(rolloff) ? rolloff : parseInt(rolloff, 10);
+      const possibilities = [-12, -24, -48, -96];
+      let cascadingCount = possibilities.indexOf(rolloffNum);
+      assert(cascadingCount !== -1, `rolloff can only be ${possibilities.join(", ")}`);
+      cascadingCount += 1;
+      this._rolloff = rolloffNum;
+      this.input.disconnect();
+      this._filters.forEach((filter) => filter.disconnect());
+      this._filters = new Array(cascadingCount);
+      for (let count = 0; count < cascadingCount; count++) {
+        const filter = new BiquadFilter({
+          context: this.context
+        });
+        filter.type = this._type;
+        this.frequency.connect(filter.frequency);
+        this.detune.connect(filter.detune);
+        this.Q.connect(filter.Q);
+        this.gain.connect(filter.gain);
+        this._filters[count] = filter;
+      }
+      this._internalChannels = this._filters;
+      connectSeries(this.input, ...this._internalChannels, this.output);
+    }
+    /**
+     * Get the frequency response curve. This curve represents how the filter
+     * responses to frequencies between 20hz-20khz.
+     * @param  len The number of values to return
+     * @return The frequency response curve between 20-20kHz
+     */
+    getFrequencyResponse(len = 128) {
+      const filterClone = new BiquadFilter({
+        context: this.context,
+        frequency: this.frequency.value,
+        gain: this.gain.value,
+        Q: this.Q.value,
+        type: this._type,
+        detune: this.detune.value
+      });
+      const totalResponse = new Float32Array(len).map(() => 1);
+      this._filters.forEach(() => {
+        const response = filterClone.getFrequencyResponse(len);
+        response.forEach((val, i) => totalResponse[i] *= val);
+      });
+      filterClone.dispose();
+      return totalResponse;
+    }
+    /**
+     * Clean up.
+     */
+    dispose() {
+      super.dispose();
+      this._filters.forEach((filter) => {
+        filter.dispose();
+      });
+      writable(this, ["detune", "frequency", "gain", "Q"]);
+      this.frequency.dispose();
+      this.Q.dispose();
+      this.detune.dispose();
+      this.gain.dispose();
+      return this;
+    }
+  };
+
   // node_modules/tone/build/esm/instrument/MembraneSynth.js
   var MembraneSynth = class _MembraneSynth extends Synth {
     constructor() {
@@ -21366,6 +21964,39 @@
     );
     workletContext.add(processor);
   }
+  function getWorkletGlobalScope() {
+    return Array.from(workletContext).join("\n");
+  }
+
+  // node_modules/tone/build/esm/core/worklet/ToneAudioWorklet.js
+  var ToneAudioWorklet = class extends ToneAudioNode {
+    constructor(options) {
+      super(options);
+      this.name = "ToneAudioWorklet";
+      this.workletOptions = {};
+      this.onprocessorerror = noOp;
+      const blobUrl = URL.createObjectURL(new Blob([getWorkletGlobalScope()], { type: "text/javascript" }));
+      const name = this._audioWorkletName();
+      this._dummyGain = this.context.createGain();
+      this._dummyParam = this._dummyGain.gain;
+      this.context.addAudioWorkletModule(blobUrl).then(() => {
+        if (!this.disposed) {
+          this._worklet = this.context.createAudioWorkletNode(name, this.workletOptions);
+          this._worklet.onprocessorerror = this.onprocessorerror.bind(this);
+          this.onReady(this._worklet);
+        }
+      });
+    }
+    dispose() {
+      super.dispose();
+      this._dummyGain.disconnect();
+      if (this._worklet) {
+        this._worklet.port.postMessage("dispose");
+        this._worklet.disconnect();
+      }
+      return this;
+    }
+  };
 
   // node_modules/tone/build/esm/core/worklet/ToneAudioWorkletProcessor.worklet.js
   var toneAudioWorkletProcessor = (
@@ -21930,6 +22561,69 @@
   );
   registerProcessor(workletName2, bitCrusherWorklet);
 
+  // node_modules/tone/build/esm/effect/BitCrusher.js
+  var BitCrusher = class _BitCrusher extends Effect {
+    constructor() {
+      const options = optionsFromArguments(_BitCrusher.getDefaults(), arguments, ["bits"]);
+      super(options);
+      this.name = "BitCrusher";
+      this._bitCrusherWorklet = new BitCrusherWorklet({
+        context: this.context,
+        bits: options.bits
+      });
+      this.connectEffect(this._bitCrusherWorklet);
+      this.bits = this._bitCrusherWorklet.bits;
+    }
+    static getDefaults() {
+      return Object.assign(Effect.getDefaults(), {
+        bits: 4
+      });
+    }
+    dispose() {
+      super.dispose();
+      this._bitCrusherWorklet.dispose();
+      return this;
+    }
+  };
+  var BitCrusherWorklet = class _BitCrusherWorklet extends ToneAudioWorklet {
+    constructor() {
+      const options = optionsFromArguments(_BitCrusherWorklet.getDefaults(), arguments);
+      super(options);
+      this.name = "BitCrusherWorklet";
+      this.input = new Gain({ context: this.context });
+      this.output = new Gain({ context: this.context });
+      this.bits = new Param({
+        context: this.context,
+        value: options.bits,
+        units: "positive",
+        minValue: 1,
+        maxValue: 16,
+        param: this._dummyParam,
+        swappable: true
+      });
+    }
+    static getDefaults() {
+      return Object.assign(ToneAudioWorklet.getDefaults(), {
+        bits: 12
+      });
+    }
+    _audioWorkletName() {
+      return workletName2;
+    }
+    onReady(node) {
+      connectSeries(this.input, node, this.output);
+      const bits = node.parameters.get("bits");
+      this.bits.setParam(bits);
+    }
+    dispose() {
+      super.dispose();
+      this.input.dispose();
+      this.output.dispose();
+      this.bits.dispose();
+      return this;
+    }
+  };
+
   // node_modules/tone/build/esm/component/channel/Merge.js
   var Merge = class _Merge extends ToneAudioNode {
     constructor() {
@@ -22051,6 +22745,62 @@
     dispose() {
       super.dispose();
       this._convolver.disconnect();
+      return this;
+    }
+  };
+
+  // node_modules/tone/build/esm/effect/Vibrato.js
+  var Vibrato = class _Vibrato extends Effect {
+    constructor() {
+      const options = optionsFromArguments(_Vibrato.getDefaults(), arguments, [
+        "frequency",
+        "depth"
+      ]);
+      super(options);
+      this.name = "Vibrato";
+      this._delayNode = new Delay({
+        context: this.context,
+        delayTime: 0,
+        maxDelay: options.maxDelay
+      });
+      this._lfo = new LFO({
+        context: this.context,
+        type: options.type,
+        min: 0,
+        max: options.maxDelay,
+        frequency: options.frequency,
+        phase: -90
+        // offse the phase so the resting position is in the center
+      }).start().connect(this._delayNode.delayTime);
+      this.frequency = this._lfo.frequency;
+      this.depth = this._lfo.amplitude;
+      this.depth.value = options.depth;
+      readOnly(this, ["frequency", "depth"]);
+      this.effectSend.chain(this._delayNode, this.effectReturn);
+    }
+    static getDefaults() {
+      return Object.assign(Effect.getDefaults(), {
+        maxDelay: 5e-3,
+        frequency: 5,
+        depth: 0.1,
+        type: "sine"
+      });
+    }
+    /**
+     * Type of oscillator attached to the Vibrato.
+     */
+    get type() {
+      return this._lfo.type;
+    }
+    set type(type) {
+      this._lfo.type = type;
+    }
+    dispose() {
+      super.dispose();
+      this._delayNode.dispose();
+      this._lfo.dispose();
+      this.frequency.dispose();
+      this.depth.dispose();
       return this;
     }
   };
@@ -22520,6 +23270,307 @@
     }
   };
 
+  // src/utils/synths/TypingKeySynth.js
+  var TypingKeySynth = class {
+    constructor(masterGain) {
+      this.masterGain = masterGain;
+      this.isDisposed = false;
+      this.subSynth = new Synth({
+        oscillator: { type: "sine" },
+        envelope: {
+          attack: 2e-3,
+          decay: 0.06,
+          sustain: 0,
+          release: 0.04
+        },
+        volume: -22
+      }).connect(this.masterGain);
+      this.clickSynth = new Synth({
+        oscillator: { type: "triangle" },
+        envelope: {
+          attack: 1e-3,
+          decay: 0.05,
+          sustain: 0,
+          release: 0.025
+        },
+        volume: -14
+      }).connect(this.masterGain);
+      this.noiseEnv = new AmplitudeEnvelope({
+        attack: 1e-3,
+        decay: 0.04,
+        sustain: 0,
+        release: 0.01
+      });
+      this.noise = new Noise("white");
+      this.noiseFilter = new Filter({
+        frequency: 4800,
+        type: "bandpass",
+        Q: 3
+      });
+      this.noiseVol = new Volume(-18);
+      this.noise.connect(this.noiseFilter);
+      this.noiseFilter.connect(this.noiseVol);
+      this.noiseVol.connect(this.noiseEnv);
+      this.noiseEnv.connect(this.masterGain);
+      this.bellEnv = new AmplitudeEnvelope({
+        attack: 3e-3,
+        decay: 0.12,
+        sustain: 0,
+        release: 0.06
+      });
+      this.bellOsc1 = new Oscillator({ type: "sine", frequency: 988 });
+      this.bellOsc2 = new Oscillator({ type: "sine", frequency: 1319, detune: 8 });
+      this.bellGain = new Gain(dbToGain(-24));
+      this.bellOsc1.connect(this.bellGain);
+      this.bellOsc2.connect(this.bellGain);
+      this.bellGain.connect(this.bellEnv);
+      this.bellEnv.connect(this.masterGain);
+      try {
+        this.noise.start();
+        this.bellOsc1.start();
+        this.bellOsc2.start();
+      } catch (e) {
+      }
+    }
+    // Trigger a rich multi-layer key-click.
+    // variation: 0-3 — cycles through pitch sets (evolves as scene progresses)
+    // intensity: 0-1 — scales sub-bass weight (grows louder in Phase 2)
+    trigger(variation = 0, intensity = 0.4) {
+      if (this.isDisposed) return;
+      try {
+        const now2 = now();
+        const subNotes = ["A1", "B1", "C2", "D2"];
+        const subNote = subNotes[Math.floor(Math.random() * subNotes.length)];
+        const subVel = 0.5 + intensity * 0.5;
+        this.subSynth.triggerAttackRelease(subNote, "32n", now2, subVel);
+        const pitchSets = [
+          ["A5", "B5", "C6", "D6", "E6"],
+          // set 0: bright / crisp
+          ["G4", "A4", "B4", "C5", "D5"],
+          // set 1: mid / warm
+          ["E5", "F5", "G5", "A5", "B5"],
+          // set 2: mid-high / full
+          ["C4", "D4", "E4", "F4", "G4"]
+          // set 3: low / heavy (late Phase 2)
+        ];
+        const pitchSet = pitchSets[variation % 4];
+        const midNote = pitchSet[Math.floor(Math.random() * pitchSet.length)];
+        this.clickSynth.triggerAttackRelease(midNote, "48n", now2, 0.75 + Math.random() * 0.2);
+        this.noiseFilter.frequency.setValueAtTime(3800 + variation * 300, now2);
+        this.noiseEnv.triggerAttackRelease("32n", now2);
+        const b1Freq = 988 + (Math.random() - 0.5) * 50;
+        const b2Freq = 1319 + (Math.random() - 0.5) * 70;
+        this.bellOsc1.frequency.setValueAtTime(b1Freq, now2);
+        this.bellOsc2.frequency.setValueAtTime(b2Freq, now2);
+        this.bellEnv.triggerAttackRelease("64n", now2, 0.25 + Math.random() * 0.35);
+      } catch (e) {
+      }
+    }
+    dispose() {
+      if (this.isDisposed) return;
+      this.isDisposed = true;
+      try {
+        this.noise.stop();
+        this.noise.dispose();
+        this.noiseFilter.dispose();
+        this.noiseVol.dispose();
+        this.noiseEnv.dispose();
+        this.bellOsc1.stop();
+        this.bellOsc1.dispose();
+        this.bellOsc2.stop();
+        this.bellOsc2.dispose();
+        this.bellEnv.dispose();
+        this.bellGain.dispose();
+        this.subSynth.dispose();
+        this.clickSynth.dispose();
+      } catch (e) {
+      }
+    }
+  };
+
+  // src/utils/synths/TypingAmbientSynth.js
+  var TypingAmbientSynth = class {
+    constructor(masterGain) {
+      this.masterGain = masterGain;
+      this.isDisposed = false;
+      this.isStarted = false;
+      this.vol = new Volume(-Infinity).connect(this.masterGain);
+      this.filter = new Filter({
+        frequency: 80,
+        type: "lowpass",
+        rolloff: -24,
+        Q: 0.8
+      }).connect(this.vol);
+      this.osc1 = new Oscillator({ type: "sawtooth", frequency: 40, detune: 0 }).connect(this.filter);
+      this.osc2 = new Oscillator({ type: "sawtooth", frequency: 40, detune: 7 }).connect(this.filter);
+      this.osc3 = new Oscillator({ type: "sine", frequency: 80, detune: 1 }).connect(this.filter);
+      this.droneGain = new Gain(dbToGain(-6));
+      this.osc1.disconnect();
+      this.osc2.disconnect();
+      this.osc3.disconnect();
+      this.osc1.connect(this.droneGain);
+      this.osc2.connect(this.droneGain);
+      this.osc3.connect(this.droneGain);
+      this.droneGain.connect(this.filter);
+      this.noiseVol = new Volume(-Infinity).connect(this.filter);
+      this.noise = new Noise("pink").connect(this.noiseVol);
+      this.lfo = new LFO({ frequency: 0.05, min: -10, max: 10 });
+      this.lfo.connect(this.filter.frequency);
+    }
+    start() {
+      if (this.isStarted || this.isDisposed) return;
+      this.isStarted = true;
+      try {
+        this.osc1.start();
+        this.osc2.start();
+        this.osc3.start();
+        this.noise.start();
+        this.lfo.start();
+      } catch (e) {
+      }
+    }
+    // Call this whenever scene progress changes. progress: 0 → 1
+    // 0   = completely silent
+    // 0.5 = just barely audible
+    // 1.0 = full presence (~−22 dB)
+    update(progress) {
+      if (this.isDisposed) return;
+      if (!this.isStarted) this.start();
+      const p = Math.max(0, Math.min(1, progress));
+      const eased = Math.pow(p, 2);
+      const dbMin = -Infinity;
+      const dbMax = -22;
+      const targetDb = p < 0.02 ? -80 : dbMax + (0 - dbMax) * (1 - eased);
+      try {
+        this.vol.volume.rampTo(targetDb, 2);
+      } catch (e) {
+      }
+      const freqTarget = 80 + (700 - 80) * p;
+      try {
+        this.filter.frequency.rampTo(freqTarget, 3);
+      } catch (e) {
+      }
+      const noiseP = Math.max(0, (p - 0.5) / 0.5);
+      const noiseDb = noiseP < 0.01 ? -80 : -38 + noiseP * 14;
+      try {
+        this.noiseVol.volume.rampTo(noiseDb, 2.5);
+      } catch (e) {
+      }
+      const lfoFreq = 0.04 + p * 0.08;
+      try {
+        this.lfo.frequency.rampTo(lfoFreq, 4);
+      } catch (e) {
+      }
+    }
+    // Smoothly ramp everything to silence over `duration` seconds (default 2 s).
+    // Safe to call even if the synth was never fully audible.
+    fadeOut(duration = 2) {
+      if (this.isDisposed) return;
+      try {
+        this.vol.volume.rampTo(-80, duration);
+        this.noiseVol.volume.rampTo(-80, duration);
+      } catch (e) {
+      }
+    }
+    dispose() {
+      if (this.isDisposed) return;
+      this.isDisposed = true;
+      try {
+        this.lfo.stop();
+        this.lfo.dispose();
+        this.osc1.stop();
+        this.osc1.dispose();
+        this.osc2.stop();
+        this.osc2.dispose();
+        this.osc3.stop();
+        this.osc3.dispose();
+        this.noise.stop();
+        this.noise.dispose();
+        this.noiseVol.dispose();
+        this.droneGain.dispose();
+        this.filter.dispose();
+        this.vol.dispose();
+      } catch (e) {
+      }
+    }
+  };
+
+  // src/utils/synths/TypingAccentSynth.js
+  var TypingAccentSynth = class {
+    constructor(masterGain) {
+      this.masterGain = masterGain;
+      this.isDisposed = false;
+      this.reverb = new Reverb({ decay: 1.8, preDelay: 0.01 });
+      this.reverb.connect(this.masterGain);
+      this.padEnv = new AmplitudeEnvelope({
+        attack: 0.01,
+        decay: 0.18,
+        sustain: 0.04,
+        release: 0.12
+      });
+      this.padEnv.connect(this.reverb);
+      this.filter = new Filter({
+        frequency: 1400,
+        type: "lowpass",
+        Q: 1.5
+      });
+      this.filter.connect(this.padEnv);
+      this.padOsc1 = new Oscillator({ type: "triangle", frequency: 261.6 });
+      this.padOsc2 = new Oscillator({ type: "sine", frequency: 392, detune: 5 });
+      this.harmOsc = new Oscillator({ type: "triangle", frequency: 523.2, detune: -3 });
+      this.padGain = new Gain(dbToGain(-16));
+      this.padOsc1.connect(this.padGain);
+      this.padOsc2.connect(this.padGain);
+      this.harmOsc.connect(this.padGain);
+      this.padGain.connect(this.filter);
+      try {
+        this.padOsc1.start();
+        this.padOsc2.start();
+        this.harmOsc.start();
+      } catch (e) {
+      }
+    }
+    // Trigger a melodic accent.
+    // type: 0 = rise, 1 = resolve, 2 = float
+    triggerAccent(type = 0) {
+      if (this.isDisposed) return;
+      try {
+        const now2 = now();
+        const chords = [
+          { f1: "C3", f2: "G3", f3: "C4" },
+          // rise: open fifth
+          { f1: "G2", f2: "D3", f3: "G3" },
+          // resolve: grounded
+          { f1: "E3", f2: "B3", f3: "F#4" }
+          // float: suspended, tense
+        ];
+        const chord = chords[type % 3];
+        this.padOsc1.frequency.setValueAtTime(Frequency(chord.f1).toFrequency(), now2);
+        this.padOsc2.frequency.setValueAtTime(Frequency(chord.f2).toFrequency(), now2);
+        this.harmOsc.frequency.setValueAtTime(Frequency(chord.f3).toFrequency(), now2);
+        this.padEnv.triggerAttackRelease("8n", now2);
+      } catch (e) {
+      }
+    }
+    dispose() {
+      if (this.isDisposed) return;
+      this.isDisposed = true;
+      try {
+        this.padOsc1.stop();
+        this.padOsc1.dispose();
+        this.padOsc2.stop();
+        this.padOsc2.dispose();
+        this.harmOsc.stop();
+        this.harmOsc.dispose();
+        this.padEnv.dispose();
+        this.padGain.dispose();
+        this.filter.dispose();
+        this.reverb.dispose();
+      } catch (e) {
+      }
+    }
+  };
+
   // src/utils/AudioManager.js
   var AudioManager = class {
     constructor() {
@@ -22527,11 +23578,15 @@
       this.audioContext = null;
       this.footstepSynth = null;
       this.progressiveSynth = null;
+      this.typingKeySynth = null;
+      this.typingAmbientSynth = null;
+      this.typingAccentSynth = null;
       this.ambientPlayer = null;
       this.isInitialized = false;
       this.sceneType = null;
       this.contextStarted = false;
       this.startContextOnGesture = null;
+      this._lastClickTime = 0;
     }
     async ensureContextStarted() {
       if (this.contextStarted) return;
@@ -22571,6 +23626,10 @@
         this.reverb.connect(this.compressor);
         if (sceneType === "video") {
           this.footstepSynth = new FootstepSynth(this.compressor, this.reverb);
+        } else if (sceneType === "typing") {
+          this.typingKeySynth = new TypingKeySynth(this.compressor);
+          this.typingAmbientSynth = new TypingAmbientSynth(this.compressor);
+          this.typingAccentSynth = new TypingAccentSynth(this.compressor);
         } else {
           this.footstepSynth = new FootstepSynth(this.compressor, this.reverb);
         }
@@ -22678,6 +23737,27 @@
       if (!this.progressiveSynth) return;
       this.progressiveSynth.update(progress);
     }
+    // Trigger a rich multi-layer key-click, rate-limited to ~30/sec max.
+    // variation (0-3): pitch set — caller should pass Math.floor(progress*4)
+    // intensity (0-1): sub-bass weight — caller should pass scene progress
+    triggerKeyClick(variation = 0, intensity = 0.4) {
+      if (!this.typingKeySynth || !this.contextStarted) return;
+      const now2 = performance.now();
+      if (now2 - this._lastClickTime < 33) return;
+      this._lastClickTime = now2;
+      this.typingKeySynth.trigger(variation, intensity);
+    }
+    // Fire a melodic accent (0 = rise, 1 = resolve, 2 = float).
+    // Intended for phase transitions and word-count milestones.
+    triggerTypingAccent(type = 0) {
+      if (!this.typingAccentSynth || !this.contextStarted) return;
+      this.typingAccentSynth.triggerAccent(type);
+    }
+    // Drive the ambient drone; call whenever scene progress changes. progress: 0→1
+    updateTypingProgress(progress) {
+      if (!this.typingAmbientSynth) return;
+      this.typingAmbientSynth.update(progress);
+    }
     setMasterVolume(volume) {
       if (this.masterGain) {
         this.masterGain.gain.rampTo(volume, 0.1);
@@ -22692,6 +23772,18 @@
         if (this.progressiveSynth) {
           this.progressiveSynth.dispose();
           this.progressiveSynth = null;
+        }
+        if (this.typingKeySynth) {
+          this.typingKeySynth.dispose();
+          this.typingKeySynth = null;
+        }
+        if (this.typingAmbientSynth) {
+          this.typingAmbientSynth.dispose();
+          this.typingAmbientSynth = null;
+        }
+        if (this.typingAccentSynth) {
+          this.typingAccentSynth.dispose();
+          this.typingAccentSynth = null;
         }
         if (this.ambientPlayer) {
           this.ambientPlayer.stop();
@@ -22751,9 +23843,9 @@
     "  Widget build(BuildContext context) {",
     "    return MaterialApp(",
     "      title: 'Films',",
-    "      theme: ThemeData.dark().copyWith(",
-    "        scaffoldBackgroundColor: Colors.black,",
-    "        primaryColor: Colors.white,",
+    "      theme: ThemeData.light().copyWith(",
+    "        scaffoldBackgroundColor: Colors.white,",
+    "        primaryColor: Colors.black,",
     "      ),",
     "      home: const FilmsPage(),",
     "    );",
@@ -22913,14 +24005,14 @@
     "  @override",
     "  Widget build(BuildContext context) {",
     "    return Scaffold(",
-    "      backgroundColor: Colors.black,",
+    "      backgroundColor: Colors.white,",
     "      appBar: AppBar(",
-    "        backgroundColor: Colors.transparent,",
+    "        backgroundColor: Colors.white,",
     "        elevation: 0,",
     "        title: const Text(",
     "          'Films',",
     "          style: TextStyle(",
-    "            color: Colors.white,",
+    "            color: Colors.black,",
     "            fontSize: 20,",
     "            fontWeight: FontWeight.w300,",
     "            letterSpacing: 4,",
@@ -22935,12 +24027,12 @@
     "                height: 20,",
     "                child: CircularProgressIndicator(",
     "                  strokeWidth: 1.5,",
-    "                  color: Colors.white54,",
+    "                  color: Colors.black38,",
     "                ),",
     "              ),",
     "            ),",
     "          IconButton(",
-    "            icon: const Icon(Icons.add, color: Colors.white70),",
+    "            icon: const Icon(Icons.add, color: Colors.black54),",
     "            onPressed: _navigateToCustomFilmEditor,",
     "          ),",
     "        ],",
@@ -22969,7 +24061,7 @@
     "        padding: const EdgeInsets.symmetric(vertical: 16),",
     "        itemCount: _selectedFilms.length,",
     "        separatorBuilder: (_, __) => const Divider(",
-    "          color: Colors.white12,",
+    "          color: Colors.black12,",
     "          height: 1,",
     "        ),",
     "        itemBuilder: (context, index) {",
@@ -22985,10 +24077,10 @@
     "  Widget _buildEmptySlot(int index) {",
     "    return ListTile(",
     "      onTap: () => setState(() => _selectingSlotIndex = index),",
-    "      leading: const Icon(Icons.add_circle_outline, color: Colors.white24),",
+    "      leading: const Icon(Icons.add_circle_outline, color: Colors.black26),",
     "      title: Text(",
     "        'Slot ${index + 1} \u2014 tap to assign',",
-    "        style: const TextStyle(color: Colors.white24),",
+    "        style: const TextStyle(color: Colors.black38),",
     "      ),",
     "    );",
     "  }",
@@ -22999,23 +24091,23 @@
     "      onTap: () => _navigateToFilmDetail(film),",
     "      onLongPress: () => _showSlotOptions(film, index),",
     "      leading: CircleAvatar(",
-    "        backgroundColor: Colors.white12,",
+    "        backgroundColor: Colors.black12,",
     "        backgroundImage: film.thumbnailUrl != null",
     "            ? NetworkImage(film.thumbnailUrl!)",
     "            : null,",
     "        child: film.thumbnailUrl == null",
-    "            ? const Icon(Icons.movie_outlined, color: Colors.white38)",
+    "            ? const Icon(Icons.movie_outlined, color: Colors.black38)",
     "            : null,",
     "      ),",
-    "      title: Text(film.title, style: const TextStyle(color: Colors.white)),",
+    "      title: Text(film.title, style: const TextStyle(color: Colors.black87)),",
     "      subtitle: Text(",
     "        film.director ?? '',",
-    "        style: const TextStyle(color: Colors.white54, fontSize: 12),",
+    "        style: const TextStyle(color: Colors.black54, fontSize: 12),",
     "      ),",
     "      trailing: IconButton(",
     "        icon: Icon(",
     "          isFavorite ? Icons.favorite : Icons.favorite_border,",
-    "          color: isFavorite ? Colors.redAccent : Colors.white38,",
+    "          color: isFavorite ? Colors.redAccent : Colors.black38,",
     "          size: 20,",
     "        ),",
     "        onPressed: () => _toggleFavorite(film),",
@@ -23026,7 +24118,7 @@
     "  void _showSlotOptions(Film film, int slotIndex) {",
     "    showModalBottomSheet(",
     "      context: context,",
-    "      backgroundColor: Colors.grey[900],",
+    "      backgroundColor: Colors.white,",
     "      shape: const RoundedRectangleBorder(",
     "        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),",
     "      ),",
@@ -23035,11 +24127,8 @@
     "          mainAxisSize: MainAxisSize.min,",
     "          children: [",
     "            ListTile(",
-    "              leading: const Icon(Icons.swap_horiz, color: Colors.white70),",
-    "              title: const Text(",
-    "                'Replace film',",
-    "                style: TextStyle(color: Colors.white),",
-    "              ),",
+    "              leading: const Icon(Icons.swap_horiz, color: Colors.black54),",
+    "              title: const Text('Replace film'),",
     "              onTap: () {",
     "                Navigator.pop(context);",
     "                setState(() => _selectingSlotIndex = slotIndex);",
@@ -23063,44 +24152,54 @@
     "  }",
     "}"
   ];
+  var WORD_POOL = DART_CODE_LINES.flatMap((line) => line.split(/(\s+)/).filter((s) => s.trim().length > 0));
   var COLOR_STYLES = [
-    { name: "kw-orange", color: "#FFA500", keywords: ["import", "class", "final", "const", "async", "await", "super", "@override"] },
-    { name: "kw-purple", color: "#DA70D6", keywords: ["void", "Future", "List", "String", "bool", "int", "setState", "Widget"] },
-    { name: "kw-cyan", color: "#00D9FF", keywords: ["new", "this", "if", "return", "for", "while", "try", "catch", "finally"] },
-    { name: "kw-red", color: "#FF6B6B", keywords: ["null", "throw", "Error", "late"] },
-    { name: "kw-lime", color: "#39FF14", keywords: ["true", "false", "mounted"] }
+    { name: "kw-gray", color: "#c75000", keywords: ["import", "class", "final", "const", "async", "await", "super", "@override"] },
+    { name: "kw-yellow", color: "#8800cc", keywords: ["void", "Future", "List", "String", "bool", "int", "setState", "Widget"] },
+    { name: "kw-blue", color: "#005fa3", keywords: ["new", "this", "if", "return", "for", "while", "try", "catch", "finally"] },
+    { name: "kw-red", color: "#bb0000", keywords: ["null", "throw", "Error", "late"] }
   ];
+  var NUM_COLUMNS = 5;
   var TypingScene = class {
     constructor(sceneManager2 = null) {
       this.sceneManager = sceneManager2;
       this.backgroundLayer = null;
-      this.promptElement = null;
       this.typingLine = null;
       this.fullscreenCode = null;
+      this.middleCol = null;
       this.isUserControlling = true;
-      this.typedText = "";
+      this.wordIdx = 0;
+      this.wordCount = 0;
+      this.WORD_THRESHOLD = 60;
       this.autoGenStarted = false;
-      this.autoGenTimer = null;
-      this.lineIndex = 0;
-      this.lineCount = 0;
-      this.charQueue = [];
-      this.currentLineDiv = null;
-      this.totalCharsTyped = 0;
+      this.colStates = [];
+      this.totalWordsTyped = 0;
       this.sceneComplete = false;
-      this.CHAR_INTERVAL_INITIAL = 60;
-      this.CHAR_INTERVAL_MIN = 4;
-      this.MAX_CHARS = 3e3;
+      this.WORD_INTERVAL_INITIAL = 500;
+      this.WORD_INTERVAL_MIN = 25;
+      this.MAX_WORDS = 4e3;
+      this.wordSpans = [];
+      this.specialCharSpans = [];
+      this.flickerRoamTimer = null;
+      this.flickerCharTimer = null;
+      this._flickerActive = [];
+      this._flickerCharActive = [];
+      this.FLICKER_PICKS_MIN = 0;
+      this.FLICKER_PICKS_MAX = 10;
+      this.SPECIAL_CHAR_PICKS_MIN = 1;
+      this.SPECIAL_CHAR_PICKS_MAX = 8;
+      this.SPECIAL_CHAR_REGEX = /[(){}[\];,'"@]|\/\/\/|\./;
+      this.NEW_WORD_DURATION = 400;
       this.audioManager = null;
       this.keyboardHandler = null;
     }
-    // ─────────────────────────────────────────────
-    //  Init / teardown
-    // ─────────────────────────────────────────────
+    // ── Init / cleanup ──────────────────────────────────────────────────────────
     async init() {
       document.body.innerHTML = "";
-      document.body.style.cssText = "margin:0;overflow:hidden;background:#000;";
+      document.body.style.cssText = "margin:0;overflow:hidden;background:#f8f8f8;";
       this.addGlobalStyles();
       this.buildBackground();
+      this.buildGrid();
       this.buildPrompt();
       this.keyboardHandler = (e) => this.handleKeyboard(e);
       document.addEventListener("keydown", this.keyboardHandler);
@@ -23109,6 +24208,11 @@
     }
     cleanup() {
       clearTimeout(this.autoGenTimer);
+      this.colStates.forEach((col) => clearTimeout(col.timer));
+      clearTimeout(this.flickerRoamTimer);
+      clearTimeout(this.flickerCharTimer);
+      this.flickerRoamTimer = null;
+      this.flickerCharTimer = null;
       if (this.keyboardHandler) {
         document.removeEventListener("keydown", this.keyboardHandler);
         this.keyboardHandler = null;
@@ -23118,79 +24222,148 @@
         this.audioManager = null;
       }
       document.body.innerHTML = "";
-      document.body.style.cssText = "margin:0;background:#000;";
+      document.body.style.cssText = "margin:0;background:#f8f8f8;";
     }
-    // ─────────────────────────────────────────────
-    //  Phase 1: prompt + user typing
-    // ─────────────────────────────────────────────
+    // ── Phase 1: prompt ─────────────────────────────────────────────────────────
     buildBackground() {
       this.backgroundLayer = document.createElement("div");
-      this.backgroundLayer.style.cssText = `
-      position:fixed; top:0; left:0;
-      width:100%; height:100%;
-      font-family:monospace; font-size:12px;
-      color:rgba(100,100,100,0.08);
-      white-space:pre-wrap; overflow:hidden;
-      z-index:1; line-height:1.5;
-      padding:20px; box-sizing:border-box;
-      pointer-events:none;
-    `;
-      this.backgroundLayer.textContent = ". , / ; ' ~ ` ".repeat(500);
+      this.backgroundLayer.className = "background-layer";
+      this.backgroundLayer.textContent = ". , / ; ' ~ ` ".repeat(600);
       document.body.appendChild(this.backgroundLayer);
     }
+    // ── Build the full-screen grid immediately — Phase 1 uses the middle column ──
+    buildGrid() {
+      const MIDDLE_COL = Math.floor(NUM_COLUMNS / 2);
+      const offsetStep = Math.floor(DART_CODE_LINES.length / NUM_COLUMNS);
+      this.fullscreenCode = document.createElement("div");
+      this.fullscreenCode.className = "fullscreen-code";
+      document.body.appendChild(this.fullscreenCode);
+      for (let i = 0; i < NUM_COLUMNS; i++) {
+        const el = document.createElement("div");
+        el.className = "code-column";
+        if (i < NUM_COLUMNS - 1) {
+          el.style.borderRight = "1px solid rgba(0,0,0,0.06)";
+        }
+        if (i !== MIDDLE_COL) {
+          el.classList.add("code-column--offstage");
+        }
+        this.fullscreenCode.appendChild(el);
+        const col = {
+          el,
+          lineIdx: i * offsetStep,
+          lineCount: 0,
+          wordQueue: [],
+          currentLineDiv: null,
+          timer: null,
+          scrollCount: 0
+        };
+        this.colStates.push(col);
+      }
+      this.middleCol = this.colStates[MIDDLE_COL];
+    }
     buildPrompt() {
-      this.promptElement = document.createElement("div");
-      this.promptElement.style.cssText = `
-      position:fixed; top:50%; left:50%;
-      transform:translate(-50%,-50%);
-      z-index:20;
-      font-family:'Courier New',monospace;
-      font-size:16px;
-      color:#00ff00;
-      line-height:1.8;
-      padding:24px 28px;
-      background:rgba(0,0,0,0.88);
-      border:1px solid rgba(0,255,0,0.25);
-      border-radius:4px;
-      min-width:460px;
-      white-space:pre;
-    `;
+      const col = this.middleCol;
       const line1 = this.makeStaticLine("void main() {");
-      const line2 = this.makeStaticLine("  // TODO: Define your EXISTENCE here");
+      const line2 = this.makeStaticLineWithHighlight("  // TODO: Define your EXISTENCE here", "EXISTENCE", "existence-highlight");
       this.typingLine = document.createElement("div");
+      this.typingLine.className = "typing-line";
       this.renderTypingLine();
       const line4 = this.makeStaticLine("}");
-      this.promptElement.appendChild(line1);
-      this.promptElement.appendChild(line2);
-      this.promptElement.appendChild(this.typingLine);
-      this.promptElement.appendChild(line4);
-      document.body.appendChild(this.promptElement);
-      const chars = this.promptElement.querySelectorAll(".prompt-char");
-      gsapWithCSS.to(chars, { opacity: 1, duration: 0.06, stagger: 0.025, ease: "back.out(1.7)" });
+      col.el.appendChild(line1);
+      col.el.appendChild(line2);
+      col.el.appendChild(this.typingLine);
+      col.el.appendChild(line4);
+      const chars = col.el.querySelectorAll(".prompt-char");
+      gsapWithCSS.to(chars, { opacity: 1, duration: 0.05, stagger: 0.02, ease: "back.out(1.7)" });
     }
     makeStaticLine(text) {
       const div = document.createElement("div");
-      text.split("").forEach((char) => {
+      text.split("").forEach((ch) => {
         const span = document.createElement("span");
-        span.className = "prompt-char";
-        span.textContent = char;
-        span.style.cssText = "opacity:0; display:inline-block;";
+        span.className = "typing-text prompt-char";
+        span.textContent = ch;
         div.appendChild(span);
       });
       return div;
     }
+    // Build a static line with a specific word highlighted with a CSS class
+    makeStaticLineWithHighlight(text, highlightWord, highlightClass) {
+      const div = document.createElement("div");
+      const regex = new RegExp(`(${this.escapeRegex(highlightWord)})`, "g");
+      const parts = text.split(regex);
+      parts.forEach((part) => {
+        if (part === highlightWord) {
+          const wordSpan = document.createElement("span");
+          wordSpan.className = highlightClass;
+          wordSpan.style.cssText = "display:inline-block; padding: 2px 4px;";
+          part.split("").forEach((ch) => {
+            const charSpan = document.createElement("span");
+            charSpan.className = "typing-text prompt-char";
+            charSpan.textContent = ch;
+            charSpan.style.opacity = "1";
+            wordSpan.appendChild(charSpan);
+          });
+          div.appendChild(wordSpan);
+        } else {
+          part.split("").forEach((ch) => {
+            const span = document.createElement("span");
+            span.className = "typing-text prompt-char";
+            span.textContent = ch;
+            div.appendChild(span);
+          });
+        }
+      });
+      return div;
+    }
+    escapeRegex(str) {
+      return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+    // Rebuild the typing line from accumulated word spans
     renderTypingLine() {
       this.typingLine.innerHTML = "";
       const indent = document.createElement("span");
       indent.textContent = "  ";
       this.typingLine.appendChild(indent);
-      this.typedText.split("").forEach((char, idx) => {
-        const span = document.createElement("span");
-        span.textContent = char;
-        span.style.color = COLOR_STYLES[idx % COLOR_STYLES.length].color;
-        span.dataset.charIdx = idx;
-        this.typingLine.appendChild(span);
-      });
+      if (this.wordCount === 0) {
+        const cursor = document.createElement("span");
+        cursor.className = "prompt-cursor";
+        cursor.textContent = "|";
+        this.typingLine.appendChild(cursor);
+      }
+    }
+    // Append a single word span with pop-in animation
+    appendWord(word) {
+      const oldCursor = this.typingLine.querySelector(".prompt-cursor");
+      if (oldCursor) oldCursor.remove();
+      const span = document.createElement("span");
+      span.textContent = word + " ";
+      span.style.display = "inline-block";
+      span.className = "typing-text";
+      span.classList.add("word-fresh");
+      setTimeout(() => span.classList.remove("word-fresh"), this.NEW_WORD_DURATION);
+      this.wordSpans.push(span);
+      if (this.SPECIAL_CHAR_REGEX.test(word)) {
+        this.specialCharSpans.push(span);
+        if (this.specialCharSpans.length === 1 && !this.flickerCharTimer) {
+          this.tickSpecialCharFlicker();
+        }
+      }
+      if (this.wordSpans.length === 3 && !this.flickerRoamTimer) {
+        this.tickRoamingFlicker();
+      }
+      this.typingLine.appendChild(span);
+      gsapWithCSS.fromTo(
+        span,
+        { opacity: 0, scale: 1, y: 4 },
+        { opacity: 1, scale: 1, y: 0, duration: 0.05, ease: "back.out(2.5)" }
+      );
+      if (this.audioManager) {
+        const p1 = Math.min(this.wordCount / this.WORD_THRESHOLD, 1);
+        const variation = Math.floor(p1 * 4);
+        const intensity = p1 * 0.6;
+        this.audioManager.triggerKeyClick(variation, intensity);
+        this.audioManager.updateTypingProgress(p1 * 0.15);
+      }
       const cursor = document.createElement("span");
       cursor.className = "prompt-cursor";
       cursor.textContent = "|";
@@ -23198,196 +24371,268 @@
     }
     handleKeyboard(event) {
       if (!this.isUserControlling) return;
-      const key = event.key;
-      if (key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
-        this.typedText += key;
-        this.renderTypingLine();
-        const spans = this.typingLine.querySelectorAll("span[data-char-idx]");
-        const newest = spans[spans.length - 1];
-        if (newest) {
-          gsapWithCSS.fromTo(
-            newest,
-            { opacity: 0, scale: 0.7 },
-            { opacity: 1, scale: 1, duration: 0.1, ease: "back.out(2)" }
-          );
-        }
-        if (this.typedText.length >= 50 && !this.autoGenStarted) {
-          this.startAutoGeneration();
-        }
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (["Shift", "Control", "Alt", "Meta", "CapsLock", "Tab", "Escape"].includes(event.key)) return;
+      event.preventDefault();
+      if (this.audioManager) this.audioManager.fireContextStart();
+      const progress = Math.min(this.wordCount / this.WORD_THRESHOLD, 1);
+      const base = 1 + Math.floor(progress * 5);
+      const bonus = Math.floor(Math.random() * (1 + Math.floor(progress * 6)));
+      const wordsToAdd = base + bonus;
+      for (let i = 0; i < wordsToAdd; i++) {
+        const word = WORD_POOL[this.wordIdx % WORD_POOL.length];
+        this.wordIdx++;
+        this.wordCount++;
+        this.appendWord(word);
+      }
+      if (this.wordCount >= this.WORD_THRESHOLD && !this.autoGenStarted) {
+        this.startAutoGeneration();
       }
     }
-    // ─────────────────────────────────────────────
-    //  Phase 2: full-screen character-by-character
-    // ─────────────────────────────────────────────
+    // ── Phase 2: multi-column full-screen typing ─────────────────────────────────
     startAutoGeneration() {
       if (this.autoGenStarted) return;
       this.autoGenStarted = true;
       this.isUserControlling = false;
-      this.fullscreenCode = document.createElement("div");
-      this.fullscreenCode.style.cssText = `
-      position:fixed; top:0; left:0;
-      width:100%; height:100%;
-      overflow-y:auto; overflow-x:hidden;
-      z-index:15;
-      font-family:'Courier New',monospace;
-      font-size:13px;
-      line-height:1.65;
-      padding:40px 48px;
-      box-sizing:border-box;
-      background:rgba(0,0,0,0.97);
-      opacity:0;
-    `;
-      document.body.appendChild(this.fullscreenCode);
-      const seedLines = [
-        "void main() {",
-        "  // TODO: Define your EXISTENCE here",
-        `  ${this.typedText}`
-      ];
-      seedLines.forEach((text, idx) => {
-        const div = document.createElement("div");
-        div.className = `code-line line-color-${idx % COLOR_STYLES.length}`;
-        div.innerHTML = this.renderSeedLine(text, idx);
-        this.fullscreenCode.appendChild(div);
-        this.lineCount++;
-      });
-      gsapWithCSS.to(this.promptElement, { opacity: 0, duration: 0.5, ease: "power2.in" });
-      gsapWithCSS.to(this.fullscreenCode, {
-        opacity: 1,
-        duration: 0.5,
-        delay: 0.3,
-        ease: "power2.out",
-        onComplete: () => {
-          this.startNextLine();
-          this.scheduleNextChar(this.CHAR_INTERVAL_INITIAL);
-        }
-      });
-    }
-    // Renders a seed line as static colored HTML (no per-char spans needed)
-    renderSeedLine(text, lineIndex) {
-      const styleIndex = lineIndex % COLOR_STYLES.length;
-      const style = COLOR_STYLES[styleIndex];
-      const escaped = this.escapeHtml(text);
-      const kwRegex = new RegExp(
-        `\\b(${style.keywords.map((k) => this.escapeRegex(k)).join("|")})\\b`,
-        "g"
-      );
-      let out = "";
-      let last = 0;
-      let m;
-      while ((m = kwRegex.exec(escaped)) !== null) {
-        if (m.index > last) out += escaped.slice(last, m.index);
-        out += `<span class="${style.name}">${m[0]}</span>`;
-        last = m.index + m[0].length;
+      this._flickerActive = [];
+      this._flickerCharActive = [];
+      const oldCursor = this.typingLine.querySelector(".prompt-cursor");
+      if (oldCursor) oldCursor.remove();
+      this.colStates.forEach((col) => col.el.classList.remove("code-column--offstage"));
+      if (this.audioManager) {
+        this.audioManager.triggerTypingAccent(0);
       }
-      if (last < escaped.length) out += escaped.slice(last);
-      return out;
+      this.colStates.forEach((col, i) => {
+        setTimeout(() => {
+          this.colStartNextLine(col);
+          this.colScheduleNextWord(col, 0);
+        }, i * 120);
+      });
     }
-    // Creates a new line div and fills charQueue from the next DART_CODE_LINE
-    startNextLine() {
-      const text = DART_CODE_LINES[this.lineIndex % DART_CODE_LINES.length];
-      this.lineIndex++;
-      this.currentLineDiv = document.createElement("div");
-      this.currentLineDiv.className = `code-line line-color-${this.lineCount % COLOR_STYLES.length}`;
-      this.fullscreenCode.appendChild(this.currentLineDiv);
-      this.lineCount++;
+    // Advance a column to its next line
+    colStartNextLine(col) {
+      const text = DART_CODE_LINES[col.lineIdx % DART_CODE_LINES.length];
+      col.lineIdx++;
+      const div = document.createElement("div");
+      div.className = `typing-text code-line lc-${col.lineCount % COLOR_STYLES.length}`;
+      col.el.appendChild(div);
+      col.lineCount++;
+      col.currentLineDiv = div;
       if (text === "") {
-        this.currentLineDiv.innerHTML = "&nbsp;";
-        this.charQueue = [];
+        div.innerHTML = "\xA0";
+        col.wordQueue = [];
       } else {
-        this.charQueue = this.tokenizeLine(text, this.lineCount - 1);
+        col.wordQueue = this.tokenizeLineToWords(text, col.lineCount - 1);
       }
     }
-    // Converts a Dart line into an array of {char, colorClass} for per-char rendering
-    tokenizeLine(line, lineIndex) {
-      const styleIndex = lineIndex % COLOR_STYLES.length;
-      const style = COLOR_STYLES[styleIndex];
-      const escaped = this.escapeHtml(line);
-      const kwRegex = new RegExp(
-        `\\b(${style.keywords.map((k) => this.escapeRegex(k)).join("|")})\\b`,
-        "g"
-      );
-      const tokens = [];
-      let last = 0;
-      let m;
-      while ((m = kwRegex.exec(escaped)) !== null) {
-        if (m.index > last) tokens.push({ text: escaped.slice(last, m.index), kw: false });
-        tokens.push({ text: m[0], kw: true });
-        last = m.index + m[0].length;
-      }
-      if (last < escaped.length) tokens.push({ text: escaped.slice(last), kw: false });
-      const chars = [];
-      for (const token of tokens) {
-        for (const char of token.text.split("")) {
-          chars.push({ char, colorClass: token.kw ? style.name : null });
-        }
-      }
-      return chars;
-    }
-    // Core scheduler: types one character per tick, exponentially accelerating
-    scheduleNextChar(interval) {
+    // Per-column word scheduler — processes BATCH_SIZE words per tick to reduce
+    // setTimeout overhead and consolidate GSAP calls.
+    colScheduleNextWord(col, interval) {
       if (this.sceneComplete) return;
-      this.autoGenTimer = setTimeout(() => {
+      col.timer = setTimeout(() => {
         if (this.sceneComplete) return;
-        if (this.charQueue.length === 0) {
-          this.startNextLine();
-          if (this.charQueue.length === 0) {
-            const progress2 = this.totalCharsTyped / this.MAX_CHARS;
-            const next2 = this.CHAR_INTERVAL_INITIAL - (this.CHAR_INTERVAL_INITIAL - this.CHAR_INTERVAL_MIN) * Math.min(progress2 * 1.5, 1);
-            this.scheduleNextChar(next2);
-            return;
+        const BATCH_SIZE = 3;
+        const spans = [];
+        for (let b = 0; b < BATCH_SIZE; b++) {
+          if (this.totalWordsTyped >= this.MAX_WORDS) break;
+          if (col.wordQueue.length === 0) {
+            this.colStartNextLine(col);
+            if (col.wordQueue.length === 0) continue;
+          }
+          if (col.wordQueue.length === 0) continue;
+          const { text, colorClass } = col.wordQueue.shift();
+          const span = document.createElement("span");
+          span.textContent = text;
+          span.style.display = "inline-block";
+          span.className = "typing-text";
+          if (colorClass) span.classList.add(colorClass);
+          span.classList.add("word-fresh");
+          setTimeout(() => span.classList.remove("word-fresh"), this.NEW_WORD_DURATION);
+          col.currentLineDiv.appendChild(span);
+          spans.push(span);
+          this.totalWordsTyped++;
+        }
+        if (spans.length > 0) {
+          spans.forEach((s) => {
+            this.wordSpans.push(s);
+            if (this.wordSpans.length > 300) this.wordSpans.shift();
+            if (this.SPECIAL_CHAR_REGEX.test(s.textContent)) {
+              this.specialCharSpans.push(s);
+              if (this.specialCharSpans.length > 150) this.specialCharSpans.shift();
+            }
+          });
+          if (!this.flickerRoamTimer && this.wordSpans.length >= 5) {
+            this.tickRoamingFlicker();
+          }
+          if (!this.flickerCharTimer && this.specialCharSpans.length >= 1) {
+            this.tickSpecialCharFlicker();
+          }
+          gsapWithCSS.fromTo(
+            spans,
+            { opacity: 0, y: 2 },
+            { opacity: 1, y: 0, duration: 0.05, ease: "back.out(2)", stagger: 0.025 }
+          );
+          if (this.audioManager) {
+            const p2 = Math.min(this.totalWordsTyped / this.MAX_WORDS, 1);
+            const variation = Math.floor(p2 * 4);
+            const intensity = 0.6 + p2 * 0.4;
+            this.audioManager.triggerKeyClick(variation, intensity);
+            this.audioManager.updateTypingProgress(0.15 + p2 * 0.85);
+            if (this.totalWordsTyped > 0 && this.totalWordsTyped % 500 < 3) {
+              const accentType = Math.floor(this.totalWordsTyped / 500) % 3;
+              this.audioManager.triggerTypingAccent(accentType);
+            }
+          }
+          col.scrollCount++;
+          if (col.scrollCount % 5 === 0) {
+            col.el.scrollTop = col.el.scrollHeight;
           }
         }
-        const { char, colorClass } = this.charQueue.shift();
-        const span = document.createElement("span");
-        span.className = "code-char" + (colorClass ? " " + colorClass : "");
-        span.textContent = char;
-        this.currentLineDiv.appendChild(span);
-        gsapWithCSS.fromTo(
-          span,
-          { opacity: 0, scale: 0.7 },
-          { opacity: 1, scale: 1, duration: 0.07, ease: "back.out(2)" }
-        );
-        this.totalCharsTyped++;
-        this.fullscreenCode.scrollTop = this.fullscreenCode.scrollHeight;
-        if (this.totalCharsTyped >= this.MAX_CHARS) {
+        if (this.totalWordsTyped >= this.MAX_WORDS) {
           this.completeScene();
           return;
         }
-        const progress = this.totalCharsTyped / this.MAX_CHARS;
-        const next = this.CHAR_INTERVAL_INITIAL - (this.CHAR_INTERVAL_INITIAL - this.CHAR_INTERVAL_MIN) * Math.min(progress * 1.5, 1);
-        this.scheduleNextChar(next);
+        this.colScheduleNextWord(col, this.calcInterval(this.totalWordsTyped));
       }, interval);
     }
-    // ─────────────────────────────────────────────
-    //  Helpers
-    // ─────────────────────────────────────────────
+    // Acceleration formula: fast ramp from WORD_INTERVAL_INITIAL → WORD_INTERVAL_MIN
+    calcInterval(wordsTyped) {
+      const p = Math.min(wordsTyped / this.MAX_WORDS * 1.5, 1);
+      return this.WORD_INTERVAL_INITIAL - (this.WORD_INTERVAL_INITIAL - this.WORD_INTERVAL_MIN) * p;
+    }
+    // ── Shared helpers ──────────────────────────────────────────────────────────
+    // Tokenize a Dart line into [{text, colorClass}] — one entry per whitespace-delimited word.
+    // Leading indent is prepended to the first word; subsequent words get a single space prefix.
+    tokenizeLineToWords(line, lineIndex) {
+      const style = COLOR_STYLES[lineIndex % COLOR_STYLES.length];
+      if (!line.trim()) return [];
+      const leadMatch = line.match(/^(\s*)([\s\S]+)$/);
+      const indent = leadMatch ? leadMatch[1] : "";
+      const content = leadMatch ? leadMatch[2] : line;
+      const segments = content.split(/\s+/).filter((s) => s.length > 0);
+      return segments.map((seg, i) => {
+        const prefix = i === 0 ? indent : " ";
+        const colorClass = style.keywords.includes(seg) ? style.name : null;
+        return { text: prefix + seg, colorClass };
+      });
+    }
+    // ── Roaming flicker ticker ────────────────────────────────────────────────────
+    // One shared ticker picks random spans from the global pool, applies a color
+    // class to them, then on the next tick restores their original class and jumps
+    // to a new set of random spans. Rate accelerates 200ms → 15ms with progress.
+    tickRoamingFlicker() {
+      if (this.sceneComplete) return;
+      if (this.wordSpans.length === 0) {
+        this.flickerRoamTimer = setTimeout(() => this.tickRoamingFlicker(), 100);
+        return;
+      }
+      const progress = this.autoGenStarted ? Math.min(this.totalWordsTyped / this.MAX_WORDS, 1) : Math.min(this.wordCount / this.WORD_THRESHOLD, 1);
+      const FLICKER_RATE_INITIAL = 200;
+      const FLICKER_RATE_MIN = 15;
+      const interval = FLICKER_RATE_INITIAL - (FLICKER_RATE_INITIAL - FLICKER_RATE_MIN) * progress;
+      const styleNames = COLOR_STYLES.map((s) => s.name);
+      this._flickerActive.forEach(({ span, origClass }) => {
+        span.className = origClass;
+      });
+      this._flickerActive = [];
+      const numPicks = this.FLICKER_PICKS_MIN + Math.floor(Math.random() * (this.FLICKER_PICKS_MAX - this.FLICKER_PICKS_MIN + 1));
+      for (let i = 0; i < numPicks; i++) {
+        const span = this.wordSpans[Math.floor(Math.random() * this.wordSpans.length)];
+        const origClass = span.className;
+        span.className = styleNames[Math.floor(Math.random() * styleNames.length)];
+        this._flickerActive.push({ span, origClass });
+      }
+      this.flickerRoamTimer = setTimeout(() => this.tickRoamingFlicker(), interval);
+    }
+    // Special character flicker — dedicated ticker for punctuation spans
+    // Spans containing (){}[],;.'"/@/// are tracked in specialCharSpans and
+    // independently flicker via this ticker, separate from the random-word ticker.
+    tickSpecialCharFlicker() {
+      if (this.sceneComplete) return;
+      if (this.specialCharSpans.length === 0) {
+        this.flickerCharTimer = setTimeout(() => this.tickSpecialCharFlicker(), 100);
+        return;
+      }
+      const progress = this.autoGenStarted ? Math.min(this.totalWordsTyped / this.MAX_WORDS, 1) : Math.min(this.wordCount / this.WORD_THRESHOLD, 1);
+      const FLICKER_RATE_INITIAL = 200;
+      const FLICKER_RATE_MIN = 15;
+      const interval = FLICKER_RATE_INITIAL - (FLICKER_RATE_INITIAL - FLICKER_RATE_MIN) * progress;
+      const styleNames = COLOR_STYLES.map((s) => s.name);
+      this._flickerCharActive.forEach(({ span, origClass }) => {
+        span.className = origClass;
+      });
+      this._flickerCharActive = [];
+      const numPicks = this.SPECIAL_CHAR_PICKS_MIN + Math.floor(Math.random() * (this.SPECIAL_CHAR_PICKS_MAX - this.SPECIAL_CHAR_PICKS_MIN + 1));
+      for (let i = 0; i < numPicks; i++) {
+        const span = this.specialCharSpans[Math.floor(Math.random() * this.specialCharSpans.length)];
+        const origClass = span.className;
+        span.className = styleNames[Math.floor(Math.random() * styleNames.length)];
+        this._flickerCharActive.push({ span, origClass });
+      }
+      this.flickerCharTimer = setTimeout(() => this.tickSpecialCharFlicker(), interval);
+    }
     escapeHtml(text) {
       return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
-    escapeRegex(str) {
-      return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    }
     addGlobalStyles() {
-      const s = document.createElement("style");
-      s.textContent = `
-      @keyframes blink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
-      .prompt-cursor { animation: blink 1s infinite; }
-      .code-line { margin:0; line-height:1.65; min-height:1.65em; }
-      .code-char { display:inline-block; }
-      ${COLOR_STYLES.map((st, idx) => `
-        .${st.name} { color:${st.color}; }
-        .line-color-${idx} { color:rgba(0,255,0,0.8); }
-      `).join("")}
-    `;
-      document.head.appendChild(s);
+      if (!document.querySelector('link[href="/styles/typing-scene.css"]')) {
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = "/styles/typing-scene.css";
+        document.head.appendChild(link);
+      }
     }
     completeScene() {
       if (this.sceneComplete) return;
       this.sceneComplete = true;
-      clearTimeout(this.autoGenTimer);
-      if (this.sceneManager) {
-        setTimeout(() => this.sceneManager.transitionTo("video").catch(console.error), 1e3);
+      this.colStates.forEach((col) => clearTimeout(col.timer));
+      clearTimeout(this.flickerRoamTimer);
+      clearTimeout(this.flickerCharTimer);
+      this.flickerRoamTimer = null;
+      this.flickerCharTimer = null;
+      this._flickerActive.forEach(({ span, origClass }) => {
+        span.className = origClass;
+      });
+      this._flickerCharActive.forEach(({ span, origClass }) => {
+        span.className = origClass;
+      });
+      this._flickerActive = [];
+      this._flickerCharActive = [];
+      this._runOutro();
+    }
+    // ── Outro: spans scatter away, then VideoScene fades in on top ─────────────
+    _runOutro() {
+      if (this.audioManager && this.audioManager.typingAmbientSynth) {
+        this.audioManager.typingAmbientSynth.fadeOut(2.5);
       }
+      document.querySelectorAll(".prompt-cursor").forEach((el) => el.remove());
+      const allSpans = Array.from(
+        document.querySelectorAll(".typing-text, .prompt-char")
+      );
+      const SCATTER_DURATION = 2.2;
+      gsapWithCSS.to(allSpans, {
+        opacity: 0,
+        duration: 0.12,
+        stagger: {
+          each: SCATTER_DURATION / Math.max(allSpans.length, 1),
+          from: "random"
+        },
+        ease: "none",
+        onComplete: async () => {
+          if (!this.sceneManager) return;
+          await this.sceneManager.transitionTo("video");
+          document.body.style.opacity = "0";
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              gsapWithCSS.to(document.body, {
+                opacity: 1,
+                duration: 1.5,
+                ease: "power1.in"
+              });
+            });
+          });
+        }
+      });
     }
   };
 
@@ -49805,7 +51050,8 @@ void main() {
 
   // src/scenes/VideoScene.js
   var VideoScene = class {
-    constructor() {
+    constructor(sceneManager2) {
+      this.sceneManager = sceneManager2 || null;
       this.camera = null;
       this.scene = null;
       this.renderer = null;
@@ -49837,23 +51083,8 @@ void main() {
       this.scene.add(this.sphere);
       const light = new AmbientLight(16777215, 1);
       this.scene.add(light);
-      const debugUI = document.createElement("div");
-      debugUI.style.cssText = "position:absolute;top:10px;left:10px;background:rgba(0,0,0,0.8);color:#0f0;padding:15px;font-family:monospace;font-size:12px;border:1px solid #0f0;max-width:300px;";
-      debugUI.innerHTML = `
-      <div>Playback Rate (W/S or slider):</div>
-      <input type="range" id="playback-slider" min="-10" max="10" step="0.1" value="0" style="width:200px;">
-      <div id="playback-value">0.0x (paused)</div>
-      <div style="margin-top:10px;border-top:1px solid #0f0;padding-top:10px;">
-        <div>Video Status:</div>
-        <div id="video-status">Loading...</div>
-        <div id="video-duration" style="font-size:11px;margin-top:5px;">Duration: --:--</div>
-        <div id="video-current" style="font-size:11px;">Current: --:--</div>
-        <div id="video-buffered" style="font-size:11px;">Buffered: 0%</div>
-      </div>
-    `;
-      document.body.appendChild(debugUI);
-      const slider = document.getElementById("playback-slider");
-      const valueDisplay = document.getElementById("playback-value");
+      const slider = { value: 0 };
+      const valueDisplay = { textContent: "" };
       try {
         const response = await fetch("/api/scenes?id=video");
         this.sceneData = await response.json();
@@ -49861,28 +51092,6 @@ void main() {
       } catch (error2) {
         console.error("Failed to load video scene:", error2);
       }
-      slider.addEventListener("input", (e) => {
-        const rate = parseFloat(e.target.value);
-        const label = rate === 0 ? "paused" : rate > 0 ? "forward" : "backward";
-        valueDisplay.textContent = rate.toFixed(1) + "x (" + label + ")";
-        if (rate > 0) {
-          this.videoElement.playbackRate = rate;
-          this.videoElement.play();
-          clearInterval(this.backwardInterval);
-        } else if (rate < 0) {
-          this.videoElement.pause();
-          clearInterval(this.backwardInterval);
-          const speed = Math.abs(rate);
-          this.backwardInterval = setInterval(() => {
-            if (this.videoElement.currentTime > 0) {
-              this.videoElement.currentTime = Math.max(0, this.videoElement.currentTime - 0.016 * speed);
-            }
-          }, 16);
-        } else {
-          this.videoElement.pause();
-          clearInterval(this.backwardInterval);
-        }
-      });
       let isDragging = false;
       let previousMousePosition = { x: 0, y: 0 };
       this.renderer.domElement.addEventListener("mousedown", (e) => {
@@ -49953,42 +51162,27 @@ void main() {
     setupVideo(videoPath) {
       this.videoElement = document.createElement("video");
       this.videoElement.src = videoPath;
-      this.videoElement.loop = true;
       this.videoElement.crossOrigin = "anonymous";
       this.videoElement.preload = "auto";
-      const statusEl = document.getElementById("video-status");
-      const durationEl = document.getElementById("video-duration");
-      const currentEl = document.getElementById("video-current");
-      const bufferedEl = document.getElementById("video-buffered");
-      this.videoElement.addEventListener("loadstart", () => {
-        statusEl.textContent = "Loading video...";
-      });
-      this.videoElement.addEventListener("canplay", () => {
-        statusEl.textContent = "Ready to play \u2713";
-      });
-      this.videoElement.addEventListener("progress", () => {
-        if (this.videoElement.buffered.length > 0) {
-          const bufferedEnd = this.videoElement.buffered.end(this.videoElement.buffered.length - 1);
-          const duration = this.videoElement.duration;
-          const percent = duration ? Math.round(bufferedEnd / duration * 100) : 0;
-          bufferedEl.textContent = `Buffered: ${percent}%`;
-        }
-      });
-      this.videoElement.addEventListener("timeupdate", () => {
-        const current = Math.floor(this.videoElement.currentTime);
-        const mins = Math.floor(current / 60);
-        const secs = current % 60;
-        currentEl.textContent = `Current: ${mins}:${secs.toString().padStart(2, "0")}`;
-      });
-      this.videoElement.addEventListener("loadedmetadata", () => {
-        const duration = Math.floor(this.videoElement.duration);
-        const mins = Math.floor(duration / 60);
-        const secs = duration % 60;
-        durationEl.textContent = `Duration: ${mins}:${secs.toString().padStart(2, "0")}`;
-      });
       this.videoElement.addEventListener("error", (e) => {
-        statusEl.textContent = "Error loading video!";
         console.error("Video error:", e);
+      });
+      this.videoElement.addEventListener("ended", () => {
+        this.videoElement.pause();
+        this.videoElement.currentTime = this.videoElement.duration;
+        const overlay = document.createElement("div");
+        overlay.style.cssText = "position:fixed;inset:0;background:#fff;opacity:0;z-index:9999;pointer-events:none;";
+        document.body.appendChild(overlay);
+        gsapWithCSS.to(overlay, {
+          opacity: 1,
+          duration: 1.5,
+          ease: "power1.inOut",
+          onComplete: () => {
+            if (this.sceneManager) {
+              this.sceneManager.transitionTo("text").catch(console.error);
+            }
+          }
+        });
       });
       this.videoTexture = new VideoTexture(this.videoElement);
       this.videoTexture.minFilter = LinearFilter;
@@ -50037,74 +51231,109 @@ void main() {
   // src/scenes/TextScene.js
   var TextScene = class {
     constructor() {
-      this.container = null;
-      this.textElement = null;
-      this.animationTime = 0;
-      this.animationDuration = 4e3;
-      this.isPlaying = false;
-      this.audioManager = null;
-      this.celebratorySynth = null;
+      this._clockInterval = null;
+      this._blinkTimeout = null;
+      this._player = null;
+      this._lofiChain = null;
     }
     async init() {
-      this.container = document.createElement("div");
-      this.container.style.cssText = "width:100%;height:100%;background:#000;display:flex;justify-content:center;align-items:center;";
-      this.textElement = document.createElement("div");
-      this.textElement.textContent = "HBD";
-      this.textElement.style.cssText = "font-size:120px;color:#ff00ff;font-weight:bold;text-shadow:0 0 20px #ff00ff;animation:pulse 2s ease-in-out infinite;";
-      this.container.appendChild(this.textElement);
       document.body.innerHTML = "";
-      document.body.appendChild(this.container);
-      const style = document.createElement("style");
-      style.innerHTML = "@keyframes pulse { 0%, 100% { transform: scale(1); opacity:1; } 50% { transform: scale(1.2); opacity:0.8; } }";
-      document.head.appendChild(style);
-      this.audioManager = new AudioManager();
-      await this.audioManager.init("text");
-      await this.audioManager.ensureContextStarted();
-      this.playCelebratorySynth();
-    }
-    playCelebratorySynth() {
-      try {
-        const synth = new Synth({
-          oscillator: { type: "triangle" },
-          envelope: { attack: 0.05, decay: 0.2, sustain: 0.1, release: 0.2 }
-        }).toDestination();
-        const notes = ["G4", "B4", "D5", "G5"];
-        const now2 = now();
-        notes.forEach((note, index) => {
-          synth.triggerAttackRelease(note, "8n", now2 + index * 0.3);
+      document.body.style.cssText = "margin:0;background:#f5f5f5;";
+      const wrapper = document.createElement("div");
+      wrapper.style.cssText = `
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    `;
+      const prompt = document.createElement("div");
+      prompt.style.cssText = `
+      font-family: 'Courier New', Courier, monospace;
+      font-size: clamp(18px, 2.4vw, 32px);
+      color: #1a1a1a;
+      letter-spacing: 0.18em;
+      opacity: 0;
+      transition: opacity 1.2s ease;
+    `;
+      const updateText = () => {
+        const now2 = /* @__PURE__ */ new Date();
+        const hh = String(now2.getHours()).padStart(2, "0");
+        const mm = String(now2.getMinutes()).padStart(2, "0");
+        const ss = String(now2.getSeconds()).padStart(2, "0");
+        prompt.innerHTML = `HBD. <span class="date-highlight">04.28</span>  ${hh}:${mm}:${ss}`;
+      };
+      updateText();
+      this._clockInterval = setInterval(updateText, 1e3);
+      wrapper.appendChild(prompt);
+      document.body.appendChild(wrapper);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          prompt.style.opacity = "1";
         });
-        const loopInterval = setInterval(() => {
-          const loopNow = now();
-          notes.forEach((note, index) => {
-            synth.triggerAttackRelease(note, "8n", loopNow + index * 0.3);
-          });
-        }, 1500);
-        this.celebratorySynth = { synth, loopInterval };
-      } catch (error2) {
-        console.error("Error creating celebratory synth:", error2);
+      });
+      const scheduleNextBlink = () => {
+        const delay = 800 + Math.random() * 3200;
+        this._blinkTimeout = setTimeout(() => {
+          const dateEl = document.querySelector(".date-highlight");
+          if (!dateEl) return;
+          dateEl.style.backgroundColor = "#f5f5f5";
+          dateEl.style.color = "#1500ff";
+          dateEl.style.outline = "1px solid #1500ff";
+          const flashDuration = 80 + Math.random() * 200;
+          setTimeout(() => {
+            const el = document.querySelector(".date-highlight");
+            if (!el) return;
+            el.style.backgroundColor = "";
+            el.style.color = "";
+            el.style.outline = "";
+          }, flashDuration);
+          scheduleNextBlink();
+        }, delay);
+      };
+      scheduleNextBlink();
+      const startOnGesture = () => {
+        document.removeEventListener("click", startOnGesture);
+        document.removeEventListener("keydown", startOnGesture);
+        this._startAudio();
+      };
+      document.addEventListener("click", startOnGesture);
+      document.addEventListener("keydown", startOnGesture);
+    }
+    async _startAudio() {
+      try {
+        const vol = new Volume(-6).toDestination();
+        const lpf = new Filter(600, "lowpass", -24).connect(vol);
+        const crusher = new BitCrusher(8).connect(lpf);
+        const vibrato = new Vibrato({ frequency: 3.5, depth: 0.04, type: "sine" }).connect(crusher);
+        this._player = new Player({
+          url: "/audio/Nizikawa.mp3",
+          loop: true,
+          onload: () => this._player.start()
+        }).connect(vibrato);
+        this._lofiChain = { vol, lpf, crusher, vibrato };
+        await start();
+      } catch (e) {
+        console.error("TextScene audio error:", e);
       }
-    }
-    createTextElement() {
-    }
-    animate(deltaTime) {
-    }
-    isAnimationComplete() {
     }
     cleanup() {
-      if (this.celebratorySynth) {
-        clearInterval(this.celebratorySynth.loopInterval);
-        try {
-          this.celebratorySynth.synth.dispose();
-        } catch (e) {
-        }
-        this.celebratorySynth = null;
+      if (this._clockInterval) {
+        clearInterval(this._clockInterval);
+        this._clockInterval = null;
       }
-      if (this.audioManager) {
-        this.audioManager.cleanup();
-        this.audioManager = null;
+      if (this._blinkTimeout) {
+        clearTimeout(this._blinkTimeout);
+        this._blinkTimeout = null;
       }
-      if (this.container) {
-        this.container.remove();
+      if (this._player) {
+        this._player.stop();
+        this._player.dispose();
+        this._player = null;
+      }
+      if (this._lofiChain) {
+        Object.values(this._lofiChain).forEach((n) => n.dispose());
+        this._lofiChain = null;
       }
     }
   };
@@ -50113,7 +51342,7 @@ void main() {
   var sceneManager = new SceneManager();
   async function initializeNarrative() {
     const typingScene = new TypingScene(sceneManager);
-    const videoScene = new VideoScene();
+    const videoScene = new VideoScene(sceneManager);
     const textScene = new TextScene();
     sceneManager.registerScene("typing", typingScene);
     sceneManager.registerScene("video", videoScene);

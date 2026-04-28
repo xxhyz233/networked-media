@@ -1,6 +1,9 @@
 import * as Tone from 'tone';
 import { FootstepSynth } from './synths/FootstepSynth.js';
 import { ProgressiveSynth } from './synths/ProgressiveSynth.js';
+import { TypingKeySynth } from './synths/TypingKeySynth.js';
+import { TypingAmbientSynth } from './synths/TypingAmbientSynth.js';
+import { TypingAccentSynth } from './synths/TypingAccentSynth.js';
 
 // AudioManager: Central audio system handling all three sound layers
 // - Footsteps (glitchy synth)
@@ -13,11 +16,16 @@ export class AudioManager {
     this.audioContext = null;
     this.footstepSynth = null;
     this.progressiveSynth = null;
+    this.typingKeySynth    = null;
+    this.typingAmbientSynth = null;
+    this.typingAccentSynth  = null;
     this.ambientPlayer = null;
     this.isInitialized = false;
     this.sceneType = null;
     this.contextStarted = false;
     this.startContextOnGesture = null;
+    // Throttle key-click triggers so rapid auto-gen batches stay below ~30/sec
+    this._lastClickTime = 0;
   }
 
   async ensureContextStarted() {
@@ -75,6 +83,11 @@ export class AudioManager {
         // Progressive synth disabled - using field recording only
         // this.progressiveSynth = new ProgressiveSynth(this.compressor);
         // this.progressiveSynth.start();
+      } else if (sceneType === 'typing') {
+        // Typing scene: mechanical key-click synth + evolving ambient drone + accent synth
+        this.typingKeySynth    = new TypingKeySynth(this.compressor);
+        this.typingAmbientSynth = new TypingAmbientSynth(this.compressor);
+        this.typingAccentSynth  = new TypingAccentSynth(this.compressor);
       } else {
         // Other scenes: minimal setup
         this.footstepSynth = new FootstepSynth(this.compressor, this.reverb);
@@ -214,6 +227,30 @@ export class AudioManager {
     this.progressiveSynth.update(progress);
   }
 
+  // Trigger a rich multi-layer key-click, rate-limited to ~30/sec max.
+  // variation (0-3): pitch set — caller should pass Math.floor(progress*4)
+  // intensity (0-1): sub-bass weight — caller should pass scene progress
+  triggerKeyClick(variation = 0, intensity = 0.4) {
+    if (!this.typingKeySynth || !this.contextStarted) return;
+    const now = performance.now();
+    if (now - this._lastClickTime < 33) return; // ≈30 Hz ceiling
+    this._lastClickTime = now;
+    this.typingKeySynth.trigger(variation, intensity);
+  }
+
+  // Fire a melodic accent (0 = rise, 1 = resolve, 2 = float).
+  // Intended for phase transitions and word-count milestones.
+  triggerTypingAccent(type = 0) {
+    if (!this.typingAccentSynth || !this.contextStarted) return;
+    this.typingAccentSynth.triggerAccent(type);
+  }
+
+  // Drive the ambient drone; call whenever scene progress changes. progress: 0→1
+  updateTypingProgress(progress) {
+    if (!this.typingAmbientSynth) return;
+    this.typingAmbientSynth.update(progress);
+  }
+
   setMasterVolume(volume) {
     // volume: 0-1
     if (this.masterGain) {
@@ -231,6 +268,21 @@ export class AudioManager {
       if (this.progressiveSynth) {
         this.progressiveSynth.dispose();
         this.progressiveSynth = null;
+      }
+
+      if (this.typingKeySynth) {
+        this.typingKeySynth.dispose();
+        this.typingKeySynth = null;
+      }
+
+      if (this.typingAmbientSynth) {
+        this.typingAmbientSynth.dispose();
+        this.typingAmbientSynth = null;
+      }
+
+      if (this.typingAccentSynth) {
+        this.typingAccentSynth.dispose();
+        this.typingAccentSynth = null;
       }
 
       if (this.ambientPlayer) {
