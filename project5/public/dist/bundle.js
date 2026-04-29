@@ -24193,7 +24193,7 @@
       this.audioManager = null;
       this.keyboardHandler = null;
     }
-    // ── Init / cleanup ──────────────────────────────────────────────────────────
+    // Init / cleanup
     async init() {
       document.body.innerHTML = "";
       document.body.style.cssText = "margin:0;overflow:hidden;background:#f8f8f8;";
@@ -24224,14 +24224,14 @@
       document.body.innerHTML = "";
       document.body.style.cssText = "margin:0;background:#f8f8f8;";
     }
-    // ── Phase 1: prompt ─────────────────────────────────────────────────────────
+    // Phase 1 — prompt
     buildBackground() {
       this.backgroundLayer = document.createElement("div");
       this.backgroundLayer.className = "background-layer";
       this.backgroundLayer.textContent = ". , / ; ' ~ ` ".repeat(600);
       document.body.appendChild(this.backgroundLayer);
     }
-    // ── Build the full-screen grid immediately — Phase 1 uses the middle column ──
+    // Build the full-screen grid upfront; Phase 1 uses just the middle column
     buildGrid() {
       const MIDDLE_COL = Math.floor(NUM_COLUMNS / 2);
       const offsetStep = Math.floor(DART_CODE_LINES.length / NUM_COLUMNS);
@@ -24389,7 +24389,7 @@
         this.startAutoGeneration();
       }
     }
-    // ── Phase 2: multi-column full-screen typing ─────────────────────────────────
+    // Phase 2 — full-screen multi-column typing
     startAutoGeneration() {
       if (this.autoGenStarted) return;
       this.autoGenStarted = true;
@@ -24495,14 +24495,14 @@
         this.colScheduleNextWord(col, this.calcInterval(this.totalWordsTyped));
       }, interval);
     }
-    // Acceleration formula: fast ramp from WORD_INTERVAL_INITIAL → WORD_INTERVAL_MIN
+    // Ramps quickly from the initial word interval down to the minimum
     calcInterval(wordsTyped) {
       const p = Math.min(wordsTyped / this.MAX_WORDS * 1.5, 1);
       return this.WORD_INTERVAL_INITIAL - (this.WORD_INTERVAL_INITIAL - this.WORD_INTERVAL_MIN) * p;
     }
-    // ── Shared helpers ──────────────────────────────────────────────────────────
-    // Tokenize a Dart line into [{text, colorClass}] — one entry per whitespace-delimited word.
-    // Leading indent is prepended to the first word; subsequent words get a single space prefix.
+    // Shared helpers
+    // Break a Dart line into word tokens, each carrying an optional color class.
+    // The leading indent goes on the first token; subsequent tokens get a space prefix.
     tokenizeLineToWords(line, lineIndex) {
       const style = COLOR_STYLES[lineIndex % COLOR_STYLES.length];
       if (!line.trim()) return [];
@@ -24516,10 +24516,8 @@
         return { text: prefix + seg, colorClass };
       });
     }
-    // ── Roaming flicker ticker ────────────────────────────────────────────────────
-    // One shared ticker picks random spans from the global pool, applies a color
-    // class to them, then on the next tick restores their original class and jumps
-    // to a new set of random spans. Rate accelerates 200ms → 15ms with progress.
+    // Picks random spans from the pool, applies a color class, then swaps to a new
+    // set on the next tick. Rate accelerates from 200ms down to 15ms with progress.
     tickRoamingFlicker() {
       if (this.sceneComplete) return;
       if (this.wordSpans.length === 0) {
@@ -24544,9 +24542,8 @@
       }
       this.flickerRoamTimer = setTimeout(() => this.tickRoamingFlicker(), interval);
     }
-    // Special character flicker — dedicated ticker for punctuation spans
-    // Spans containing (){}[],;.'"/@/// are tracked in specialCharSpans and
-    // independently flicker via this ticker, separate from the random-word ticker.
+    // Same idea as tickRoamingFlicker, but scoped to punctuation spans only
+    // (anything matching the SPECIAL_CHAR_REGEX).
     tickSpecialCharFlicker() {
       if (this.sceneComplete) return;
       if (this.specialCharSpans.length === 0) {
@@ -24600,7 +24597,7 @@
       this._flickerCharActive = [];
       this._runOutro();
     }
-    // ── Outro: spans scatter away, then VideoScene fades in on top ─────────────
+    // Outro — scatter the text offscreen, then fade into VideoScene
     _runOutro() {
       if (this.audioManager && this.audioManager.typingAmbientSynth) {
         this.audioManager.typingAmbientSynth.fadeOut(2.5);

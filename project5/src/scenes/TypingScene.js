@@ -1,11 +1,11 @@
 ﻿// Typing Scene — light mode
-// Phase 1 : each keypress appends the next Dart word into the prompt
-// Phase 2 : 4 independent columns type char-by-char across the full screen
+// Phase 1: each keypress appends the next Dart word to the prompt
+// Phase 2: 5 columns fill the screen, typing code automatically
 
 import gsap from 'gsap';
 import { AudioManager } from '../utils/AudioManager.js';
 
-// ─── Dart source lines (proper indentation preserved) ────────────────────────
+// Dart source — full file with indentation intact
 const DART_CODE_LINES = [
   "import 'package:flutter/material.dart';",
   "import 'dart:ui';",
@@ -345,12 +345,11 @@ const DART_CODE_LINES = [
   "}",
 ];
 
-// ─── Word pool for Phase 1 (each keypress = one word) ────────────────────────
-// Split every line by whitespace, discard empty strings
+// Flat list of every word in the source — one word gets appended per keypress
 const WORD_POOL = DART_CODE_LINES
   .flatMap(line => line.split(/(\s+)/).filter(s => s.trim().length > 0));
 
-// ─── 5 keyword colour styles — dark on white ─────────────────────────────────
+// Keyword color categories — 4 groups, each covering a set of Dart keywords
 const COLOR_STYLES = [
   { name: 'kw-gray', color: '#c75000', keywords: ['import', 'class', 'final', 'const', 'async', 'await', 'super', '@override'] },
   { name: 'kw-yellow', color: '#8800cc', keywords: ['void', 'Future', 'List', 'String', 'bool', 'int', 'setState', 'Widget'] },
@@ -360,8 +359,6 @@ const COLOR_STYLES = [
 
 // Number of simultaneous typing columns in Phase 2
 const NUM_COLUMNS = 5;
-
-// ─────────────────────────────────────────────────────────────────────────────
 
 export class TypingScene {
   constructor(sceneManager = null) {
@@ -417,7 +414,7 @@ export class TypingScene {
     this.keyboardHandler = null;
   }
 
-  // ── Init / cleanup ──────────────────────────────────────────────────────────
+  // Init / cleanup
 
   async init() {
     document.body.innerHTML = '';
@@ -455,7 +452,7 @@ export class TypingScene {
     document.body.style.cssText = 'margin:0;background:#f8f8f8;';
   }
 
-  // ── Phase 1: prompt ─────────────────────────────────────────────────────────
+  // Phase 1 — prompt
 
   buildBackground() {
     this.backgroundLayer = document.createElement('div');
@@ -464,7 +461,7 @@ export class TypingScene {
     document.body.appendChild(this.backgroundLayer);
   }
 
-  // ── Build the full-screen grid immediately — Phase 1 uses the middle column ──
+  // Build the full-screen grid upfront; Phase 1 uses just the middle column
   buildGrid() {
     const MIDDLE_COL = Math.floor(NUM_COLUMNS / 2); // = 2 for 5 columns
     const offsetStep = Math.floor(DART_CODE_LINES.length / NUM_COLUMNS);
@@ -541,7 +538,6 @@ export class TypingScene {
 
     parts.forEach(part => {
       if (part === highlightWord) {
-        // Highlighted word: span with class
         const wordSpan = document.createElement('span');
         wordSpan.className = highlightClass;
         wordSpan.style.cssText = 'display:inline-block; padding: 2px 4px;';
@@ -554,7 +550,6 @@ export class TypingScene {
         });
         div.appendChild(wordSpan);
       } else {
-        // Regular text
         part.split('').forEach(ch => {
           const span = document.createElement('span');
           span.className = 'typing-text prompt-char';
@@ -579,7 +574,7 @@ export class TypingScene {
     indent.textContent = '  ';
     this.typingLine.appendChild(indent);
 
-    // Cursor at very start if nothing typed yet
+    // Show cursor before any typing has started
     if (this.wordCount === 0) {
       const cursor = document.createElement('span');
       cursor.className = 'prompt-cursor';
@@ -590,7 +585,7 @@ export class TypingScene {
 
   // Append a single word span with pop-in animation
   appendWord(word) {
-    // Remove the cursor first
+    // Remove the cursor before appending the word
     const oldCursor = this.typingLine.querySelector('.prompt-cursor');
     if (oldCursor) oldCursor.remove();
 
@@ -602,14 +597,14 @@ export class TypingScene {
     setTimeout(() => span.classList.remove('word-fresh'), this.NEW_WORD_DURATION);
 
     this.wordSpans.push(span);
-    // Track spans containing special punctuation in their own pool
+    // Track spans with special punctuation in their own pool
     if (this.SPECIAL_CHAR_REGEX.test(word)) {
       this.specialCharSpans.push(span);
       if (this.specialCharSpans.length === 1 && !this.flickerCharTimer) {
         this.tickSpecialCharFlicker();
       }
     }
-    // Kick off the roaming ticker once we have a few words to jump between
+    // Start the roaming flicker once we have a few spans to jump between
     if (this.wordSpans.length === 3 && !this.flickerRoamTimer) {
       this.tickRoamingFlicker();
     }
@@ -621,18 +616,18 @@ export class TypingScene {
       { opacity: 1, scale: 1, y: 0, duration: 0.05, ease: 'back.out(2.5)' }
     );
 
-    // ── Sound ────────────────────────────────────────────────────────────────
+    // Sound
     if (this.audioManager) {
-      // Pitch variation cycles through 4 sets as Phase 1 progresses
+      // Pitch and intensity both evolve as Phase 1 progresses
       const p1 = Math.min(this.wordCount / this.WORD_THRESHOLD, 1);
       const variation  = Math.floor(p1 * 4);
-      const intensity  = p1 * 0.6; // sub-bass grows from 0 → 0.6 in Phase 1
+      const intensity  = p1 * 0.6; // 0 → 0.6 over Phase 1
       this.audioManager.triggerKeyClick(variation, intensity);
-      // Drive ambient volume by Phase 1 progress (0 → 0.15 of full scene)
+      // Phase 1 covers 0–15% of the overall ambient progress range
       this.audioManager.updateTypingProgress(p1 * 0.15);
     }
 
-    // Re-add cursor
+    // Re-add the cursor after the new word
     const cursor = document.createElement('span');
     cursor.className = 'prompt-cursor';
     cursor.textContent = '|';
@@ -641,21 +636,20 @@ export class TypingScene {
 
   handleKeyboard(event) {
     if (!this.isUserControlling) return;
-    // Any printable key (or even just any keydown that isn't a modifier)
+    // Ignore modifier-only keypresses
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     if (['Shift','Control','Alt','Meta','CapsLock','Tab','Escape'].includes(event.key)) return;
 
     event.preventDefault();
 
-    // Ensure audio context is running (requires a user gesture — this is it)
+    // This keydown is a user gesture — use it to unlock the audio context
     if (this.audioManager) this.audioManager.fireContextStart();
 
-    // ── Growing burst: words-per-keypress scales with scene progress ──────────
-    // progress 0→1 as wordCount approaches WORD_THRESHOLD
+    // Words per keypress scales up as the scene progresses
     const progress = Math.min(this.wordCount / this.WORD_THRESHOLD, 1);
-    // base:  1 word at start → 6 at end
+    // 1 word at the start, up to 6 by the end
     const base  = 1 + Math.floor(progress * 5);
-    // bonus: random 0..base extra words — grows the spread dramatically late
+    // Random bonus that grows with progress — late keypresses feel explosive
     const bonus = Math.floor(Math.random() * (1 + Math.floor(progress * 6)));
     const wordsToAdd = base + bonus;
 
@@ -671,16 +665,15 @@ export class TypingScene {
     }
   }
 
-  // ── Phase 2: multi-column full-screen typing ─────────────────────────────────
+  // Phase 2 — full-screen multi-column typing
 
   startAutoGeneration() {
     if (this.autoGenStarted) return;
     this.autoGenStarted    = true;
     this.isUserControlling = false;
 
-    // Phase 1 spans remain in the middle column and stay flickerable.
-    // Just clear the active-highlight arrays so the next flicker tick
-    // starts clean (no half-lit spans to restore).
+    // Phase 1 spans stay in the middle column and remain flickerable.
+    // Clear the highlight arrays so the first Phase 2 tick starts clean.
     this._flickerActive     = [];
     this._flickerCharActive = [];
 
@@ -688,17 +681,16 @@ export class TypingScene {
     const oldCursor = this.typingLine.querySelector('.prompt-cursor');
     if (oldCursor) oldCursor.remove();
 
-    // Reveal the 4 surrounding columns instantly — the grid was already visible
+    // Reveal the other columns — the grid was already rendered, just hidden
     this.colStates.forEach(col => col.el.classList.remove('code-column--offstage'));
 
-    // Accent type 0 (rise) fires once as Phase 2 begins
+    // Fire a melodic rise to mark the start of Phase 2
     if (this.audioManager) {
       this.audioManager.triggerTypingAccent(0);
     }
 
-    // Stagger each column's auto-typing start so they feel independent.
-    // The middle column (index 2) continues appending new code lines after
-    // the Phase 1 content that is already there.
+    // Stagger each column's start so they don't all kick off simultaneously.
+    // The middle column picks up right after the Phase 1 content already there.
     this.colStates.forEach((col, i) => {
       setTimeout(() => {
         this.colStartNextLine(col);
@@ -740,7 +732,7 @@ export class TypingScene {
       for (let b = 0; b < BATCH_SIZE; b++) {
         if (this.totalWordsTyped >= this.MAX_WORDS) break;
 
-        // Exhausted line → advance to next
+        // Current line is done, move to the next one
         if (col.wordQueue.length === 0) {
           this.colStartNextLine(col);
           if (col.wordQueue.length === 0) continue; // blank line — skip slot
@@ -762,7 +754,7 @@ export class TypingScene {
       }
 
       if (spans.length > 0) {
-        // Add new spans to the rolling window pools
+        // Add to the rolling window pools
         spans.forEach(s => {
           this.wordSpans.push(s);
           if (this.wordSpans.length > 300) this.wordSpans.shift();
@@ -772,38 +764,38 @@ export class TypingScene {
             if (this.specialCharSpans.length > 150) this.specialCharSpans.shift();
           }
         });
-        // Start word flicker ticker once Phase 2 has a handful of spans
+        // Start the roaming flicker once there are a few spans to work with
         if (!this.flickerRoamTimer && this.wordSpans.length >= 5) {
           this.tickRoamingFlicker();
         }
-        // Start special-char ticker once we have at least one punctuation span
+        // Start the special-char flicker once we have at least one punctuation span
         if (!this.flickerCharTimer && this.specialCharSpans.length >= 1) {
           this.tickSpecialCharFlicker();
         }
 
-        // Single staggered GSAP call for the whole batch — far cheaper than N separate tweens
+        // Animate the whole batch at once — cheaper than individual tweens
         gsap.fromTo(spans,
           { opacity: 0, y: 2 },
           { opacity: 1, y: 0, duration: 0.05, ease: 'back.out(2)', stagger: 0.025 }
         );
 
-        // ── Sound ────────────────────────────────────────────────────────────
+        // Sound
         if (this.audioManager) {
-          // Pitch set and sub-bass weight both evolve across Phase 2
+          // Both pitch and intensity evolve across Phase 2
           const p2     = Math.min(this.totalWordsTyped / this.MAX_WORDS, 1);
           const variation  = Math.floor(p2 * 4);
-          const intensity  = 0.6 + p2 * 0.4; // 0.6 at Phase 2 start → 1.0 at end
+          const intensity  = 0.6 + p2 * 0.4; // 0.6 → 1.0 across Phase 2
           this.audioManager.triggerKeyClick(variation, intensity);
-          // Drive ambient: Phase 2 occupies progress 0.15 → 1.0
+          // Phase 2 takes ambient from 15% to 100%
           this.audioManager.updateTypingProgress(0.15 + p2 * 0.85);
-          // Melodic accent every 500 words — type cycles through rise/resolve/float
+          // Every 500 words, cycle a melodic accent (rise/resolve/float)
           if (this.totalWordsTyped > 0 && this.totalWordsTyped % 500 < 3) {
             const accentType = Math.floor(this.totalWordsTyped / 500) % 3;
             this.audioManager.triggerTypingAccent(accentType);
           }
         }
 
-        // Debounced scroll: only recalculate every 5th batch (~15 words)
+        // Only scroll every few batches to keep things smooth
         col.scrollCount++;
         if (col.scrollCount % 5 === 0) {
           col.el.scrollTop = col.el.scrollHeight;
@@ -819,16 +811,16 @@ export class TypingScene {
     }, interval);
   }
 
-  // Acceleration formula: fast ramp from WORD_INTERVAL_INITIAL → WORD_INTERVAL_MIN
+  // Ramps quickly from the initial word interval down to the minimum
   calcInterval(wordsTyped) {
     const p = Math.min((wordsTyped / this.MAX_WORDS) * 1.5, 1);
     return this.WORD_INTERVAL_INITIAL - (this.WORD_INTERVAL_INITIAL - this.WORD_INTERVAL_MIN) * p;
   }
 
-  // ── Shared helpers ──────────────────────────────────────────────────────────
+  // Shared helpers
 
-  // Tokenize a Dart line into [{text, colorClass}] — one entry per whitespace-delimited word.
-  // Leading indent is prepended to the first word; subsequent words get a single space prefix.
+  // Break a Dart line into word tokens, each carrying an optional color class.
+  // The leading indent goes on the first token; subsequent tokens get a space prefix.
   tokenizeLineToWords(line, lineIndex) {
     const style = COLOR_STYLES[lineIndex % COLOR_STYLES.length];
     if (!line.trim()) return [];
@@ -847,10 +839,8 @@ export class TypingScene {
     });
   }
 
-  // ── Roaming flicker ticker ────────────────────────────────────────────────────
-  // One shared ticker picks random spans from the global pool, applies a color
-  // class to them, then on the next tick restores their original class and jumps
-  // to a new set of random spans. Rate accelerates 200ms → 15ms with progress.
+  // Picks random spans from the pool, applies a color class, then swaps to a new
+  // set on the next tick. Rate accelerates from 200ms down to 15ms with progress.
   tickRoamingFlicker() {
     if (this.sceneComplete) return;
     if (this.wordSpans.length === 0) {
@@ -868,11 +858,11 @@ export class TypingScene {
 
     const styleNames = COLOR_STYLES.map(s => s.name);
 
-    // Restore original classes on previously highlighted spans
+    // Restore previously highlighted spans
     this._flickerActive.forEach(({ span, origClass }) => { span.className = origClass; });
     this._flickerActive = [];
 
-    // Jump to FLICKER_PICKS_MIN–FLICKER_PICKS_MAX new random spans — TWEAKABLE via constructor
+    // Pick a random number of spans to highlight
     const numPicks = this.FLICKER_PICKS_MIN + Math.floor(Math.random() * (this.FLICKER_PICKS_MAX - this.FLICKER_PICKS_MIN + 1));
     for (let i = 0; i < numPicks; i++) {
       const span = this.wordSpans[Math.floor(Math.random() * this.wordSpans.length)];
@@ -884,9 +874,8 @@ export class TypingScene {
     this.flickerRoamTimer = setTimeout(() => this.tickRoamingFlicker(), interval);
   }
 
-  // Special character flicker — dedicated ticker for punctuation spans
-  // Spans containing (){}[],;.'"/@/// are tracked in specialCharSpans and
-  // independently flicker via this ticker, separate from the random-word ticker.
+  // Same idea as tickRoamingFlicker, but scoped to punctuation spans only
+  // (anything matching the SPECIAL_CHAR_REGEX).
   tickSpecialCharFlicker() {
     if (this.sceneComplete) return;
     if (this.specialCharSpans.length === 0) {
@@ -904,11 +893,11 @@ export class TypingScene {
 
     const styleNames = COLOR_STYLES.map(s => s.name);
 
-    // Restore original classes on previously highlighted special-char spans
+    // Restore previously highlighted special-char spans
     this._flickerCharActive.forEach(({ span, origClass }) => { span.className = origClass; });
     this._flickerCharActive = [];
 
-    // Pick SPECIAL_CHAR_PICKS_MIN–MAX random special-char spans and apply a color class
+    // Pick a random number of special-char spans to highlight
     const numPicks = this.SPECIAL_CHAR_PICKS_MIN +
       Math.floor(Math.random() * (this.SPECIAL_CHAR_PICKS_MAX - this.SPECIAL_CHAR_PICKS_MIN + 1));
     for (let i = 0; i < numPicks; i++) {
@@ -929,8 +918,7 @@ export class TypingScene {
   }
 
   addGlobalStyles() {
-    // All static styles live in /styles/typing-scene.css (loaded by index.html).
-    // Inject a <link> here as a failsafe in case the file wasn't pre-loaded.
+    // Fallback: inject the stylesheet if it wasn't already loaded by index.html.
     if (!document.querySelector('link[href="/styles/typing-scene.css"]')) {
       const link = document.createElement('link');
       link.rel  = 'stylesheet';
@@ -943,14 +931,14 @@ export class TypingScene {
     if (this.sceneComplete) return;
     this.sceneComplete = true;
 
-    // Stop all column + flicker timers immediately
+    // Stop all column and flicker timers
     this.colStates.forEach(col => clearTimeout(col.timer));
     clearTimeout(this.flickerRoamTimer);
     clearTimeout(this.flickerCharTimer);
     this.flickerRoamTimer = null;
     this.flickerCharTimer = null;
 
-    // Restore any spans left mid-flicker so no ghost highlights remain
+    // Clean up any spans still mid-flicker
     this._flickerActive.forEach(({ span, origClass }) => { span.className = origClass; });
     this._flickerCharActive.forEach(({ span, origClass }) => { span.className = origClass; });
     this._flickerActive = [];
@@ -959,22 +947,22 @@ export class TypingScene {
     this._runOutro();
   }
 
-  // ── Outro: spans scatter away, then VideoScene fades in on top ─────────────
+  // Outro — scatter the text offscreen, then fade into VideoScene
   _runOutro() {
-    // Fade ambient drone out over the scatter duration
+    // Fade out the ambient drone
     if (this.audioManager && this.audioManager.typingAmbientSynth) {
       this.audioManager.typingAmbientSynth.fadeOut(2.5);
     }
 
-    // Remove blinking cursor so it doesn't fight the scatter tween
+    // Remove any lingering cursors
     document.querySelectorAll('.prompt-cursor').forEach(el => el.remove());
 
-    // Collect every typed/prompt span currently in the DOM
+    // Grab all visible text spans
     const allSpans = Array.from(
       document.querySelectorAll('.typing-text, .prompt-char')
     );
 
-    // Scatter them out in random order — visually "text deleting itself"
+    // Scatter them out in random order
     const SCATTER_DURATION = 2.2;
     gsap.to(allSpans, {
       opacity: 0,
@@ -987,10 +975,10 @@ export class TypingScene {
       onComplete: async () => {
         if (!this.sceneManager) return;
 
-        // Build VideoScene while TypingScene DOM is still present
+        // Transition while the current DOM is still intact
         await this.sceneManager.transitionTo('video');
 
-        // VideoScene.init() clears the DOM — hide before first paint, then fade in
+        // VideoScene wipes the DOM — briefly hide before fading back in
         document.body.style.opacity = '0';
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
