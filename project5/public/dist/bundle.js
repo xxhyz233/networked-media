@@ -51410,6 +51410,7 @@ void main() {
     }
     async _startAudio() {
       try {
+        await start();
         const vol = new Volume(-6).toDestination();
         const lpf = new Filter(600, "lowpass", -24).connect(vol);
         const crusher = new BitCrusher(8).connect(lpf);
@@ -51420,7 +51421,6 @@ void main() {
           onload: () => this._player.start()
         }).connect(vibrato);
         this._lofiChain = { vol, lpf, crusher, vibrato };
-        await start();
       } catch (e) {
         console.error("TextScene audio error:", e);
       }

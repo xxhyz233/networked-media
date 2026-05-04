@@ -92,6 +92,10 @@ export class TextScene {
 
   async _startAudio() {
     try {
+      // AudioWorkletNode (BitCrusher) requires the context to be running first.
+      // Resume before constructing any nodes.
+      await Tone.start();
+
       const vol = new Tone.Volume(-6).toDestination();
       const lpf = new Tone.Filter(600, 'lowpass', -24).connect(vol);
       const crusher = new Tone.BitCrusher(8).connect(lpf);
@@ -104,9 +108,6 @@ export class TextScene {
       }).connect(vibrato);
 
       this._lofiChain = { vol, lpf, crusher, vibrato };
-
-      // Resume AudioContext on gesture — playback starts via onload once loaded
-      await Tone.start();
     } catch (e) {
       console.error('TextScene audio error:', e);
     }
