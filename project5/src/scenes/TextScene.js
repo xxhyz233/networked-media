@@ -80,11 +80,14 @@ export class TextScene {
     scheduleNextBlink();
 
     // ── Lofi audio ────────────────────────────────────────────────────────────
-    // AudioContext requires a user gesture — start on first interaction
+    // Try to start immediately (context already unlocked if coming from a prior
+    // scene). If the context is still suspended, fall back to a one-time gesture
+    // listener so direct loads of this scene also work.
+    this._startAudio().catch(() => {});
     const startOnGesture = () => {
       document.removeEventListener('click', startOnGesture);
       document.removeEventListener('keydown', startOnGesture);
-      this._startAudio();
+      if (!this._player) this._startAudio().catch(() => {});
     };
     document.addEventListener('click', startOnGesture);
     document.addEventListener('keydown', startOnGesture);

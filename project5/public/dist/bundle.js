@@ -51400,10 +51400,13 @@ void main() {
         }, delay);
       };
       scheduleNextBlink();
+      this._startAudio().catch(() => {
+      });
       const startOnGesture = () => {
         document.removeEventListener("click", startOnGesture);
         document.removeEventListener("keydown", startOnGesture);
-        this._startAudio();
+        if (!this._player) this._startAudio().catch(() => {
+        });
       };
       document.addEventListener("click", startOnGesture);
       document.addEventListener("keydown", startOnGesture);
