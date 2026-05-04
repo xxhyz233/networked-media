@@ -23165,6 +23165,24 @@
       this.triggerInterval = null;
       this.lastTriggerTime = 0;
       this.noteDensity = 3.5;
+      this._pool = [];
+      this._poolIdx = 0;
+      const dest = reverb || masterGain;
+      for (let i = 0; i < 6; i++) {
+        const s1 = new Synth({
+          oscillator: { type: "sine" },
+          envelope: { attack: 8e-3, decay: 0.3, sustain: 0, release: 0.1 }
+        }).connect(dest);
+        const s2 = new Synth({
+          oscillator: { type: "sine" },
+          envelope: { attack: 0.012, decay: 0.25, sustain: 0, release: 0.08 }
+        }).connect(dest);
+        const s3 = new Synth({
+          oscillator: { type: "triangle" },
+          envelope: { attack: 3e-3, decay: 0.12, sustain: 0, release: 0.05 }
+        }).connect(dest);
+        this._pool.push({ s1, s2, s3 });
+      }
     }
     start() {
       if (this.isPlaying) return;
@@ -23183,74 +23201,29 @@
     }
     triggerMarimbaHit() {
       try {
-        const synth1 = new Synth({
-          oscillator: { type: "sine" },
-          envelope: {
-            attack: 8e-3,
-            // Very fast attack (realistic mallet strike)
-            decay: 0.3,
-            // Natural decay of marimba bar
-            sustain: 0,
-            release: 0.1
-          }
-        });
-        if (this.reverb) {
-          synth1.connect(this.reverb);
-        } else {
-          synth1.connect(this.masterGain);
-        }
+        const slot = this._pool[this._poolIdx % this._pool.length];
+        this._poolIdx++;
         const marimbaRange1 = ["C3", "D3", "E3", "F3", "G3", "A3", "B3"];
-        const randomNote1 = marimbaRange1[Math.floor(Math.random() * marimbaRange1.length)];
-        const velocity1 = 0.85 + Math.random() * 0.15;
-        synth1.triggerAttackRelease(randomNote1, "32n", now(), velocity1);
-        const synth2 = new Synth({
-          oscillator: { type: "sine" },
-          envelope: {
-            attack: 0.012,
-            // Slightly slower attack for layering
-            decay: 0.25,
-            // Slightly shorter decay
-            sustain: 0,
-            release: 0.08
-          }
-        });
-        if (this.reverb) {
-          synth2.connect(this.reverb);
-        } else {
-          synth2.connect(this.masterGain);
-        }
         const marimbaRange2 = ["G4", "A4", "B4", "C5", "D5", "E5"];
-        const randomNote2 = marimbaRange2[Math.floor(Math.random() * marimbaRange2.length)];
-        const velocity2 = 0.6 + Math.random() * 0.2;
-        synth2.triggerAttackRelease(randomNote2, "32n", now(), velocity2);
-        const synth3 = new Synth({
-          oscillator: { type: "triangle" },
-          envelope: {
-            attack: 3e-3,
-            // Very fast attack (3ms click)
-            decay: 0.12,
-            // Quick decay for tap sound
-            sustain: 0,
-            release: 0.05
-          }
-        });
-        if (this.reverb) {
-          synth3.connect(this.reverb);
-        } else {
-          synth3.connect(this.masterGain);
-        }
         const clickRange = ["G2", "A2", "B2", "C3", "D3"];
-        const randomClick = clickRange[Math.floor(Math.random() * clickRange.length)];
-        const clickVelocity = 0.7 + Math.random() * 0.2;
-        synth3.triggerAttackRelease(randomClick, "64n", now(), clickVelocity);
-        setTimeout(() => {
-          try {
-            synth1.dispose();
-            synth2.dispose();
-            synth3.dispose();
-          } catch (e) {
-          }
-        }, 450);
+        slot.s1.triggerAttackRelease(
+          marimbaRange1[Math.floor(Math.random() * marimbaRange1.length)],
+          "32n",
+          now(),
+          0.85 + Math.random() * 0.15
+        );
+        slot.s2.triggerAttackRelease(
+          marimbaRange2[Math.floor(Math.random() * marimbaRange2.length)],
+          "32n",
+          now(),
+          0.6 + Math.random() * 0.2
+        );
+        slot.s3.triggerAttackRelease(
+          clickRange[Math.floor(Math.random() * clickRange.length)],
+          "64n",
+          now(),
+          0.7 + Math.random() * 0.2
+        );
       } catch (e) {
       }
     }
@@ -23267,6 +23240,15 @@
     }
     dispose() {
       this.stop();
+      this._pool.forEach((slot) => {
+        try {
+          slot.s1.dispose();
+          slot.s2.dispose();
+          slot.s3.dispose();
+        } catch (e) {
+        }
+      });
+      this._pool = [];
     }
   };
 
@@ -23275,6 +23257,7 @@
     constructor(masterGain) {
       this.masterGain = masterGain;
       this.isDisposed = false;
+      this.panner = new Panner(0).connect(this.masterGain);
       this.subSynth = new Synth({
         oscillator: { type: "sine" },
         envelope: {
@@ -23284,7 +23267,7 @@
           release: 0.04
         },
         volume: -22
-      }).connect(this.masterGain);
+      }).connect(this.panner);
       this.clickSynth = new Synth({
         oscillator: { type: "triangle" },
         envelope: {
@@ -23294,7 +23277,7 @@
           release: 0.025
         },
         volume: -14
-      }).connect(this.masterGain);
+      }).connect(this.panner);
       this.noiseEnv = new AmplitudeEnvelope({
         attack: 1e-3,
         decay: 0.04,
@@ -23311,7 +23294,9 @@
       this.noise.connect(this.noiseFilter);
       this.noiseFilter.connect(this.noiseVol);
       this.noiseVol.connect(this.noiseEnv);
-      this.noiseEnv.connect(this.masterGain);
+      this.noiseEnv.connect(this.panner);
+      this.bellReverb = new Reverb({ decay: 0.4, preDelay: 5e-3 });
+      this.bellReverb.connect(this.panner);
       this.bellEnv = new AmplitudeEnvelope({
         attack: 3e-3,
         decay: 0.12,
@@ -23324,7 +23309,7 @@
       this.bellOsc1.connect(this.bellGain);
       this.bellOsc2.connect(this.bellGain);
       this.bellGain.connect(this.bellEnv);
-      this.bellEnv.connect(this.masterGain);
+      this.bellEnv.connect(this.bellReverb);
       try {
         this.noise.start();
         this.bellOsc1.start();
@@ -23333,12 +23318,32 @@
       }
     }
     // Trigger a rich multi-layer key-click.
-    // variation: 0-3 — cycles through pitch sets (evolves as scene progresses)
-    // intensity: 0-1 — scales sub-bass weight (grows louder in Phase 2)
-    trigger(variation = 0, intensity = 0.4) {
+    // variation (0-3): pitch set — cycles with scene progress
+    // intensity (0-1): sub-bass weight — grows louder in Phase 2
+    // pan (-1..1):     stereo position — maps to column index
+    // colorClass:      keyword CSS class — adjusts timbre per token type
+    trigger(variation = 0, intensity = 0.4, pan = 0, colorClass = null) {
       if (this.isDisposed) return;
       try {
         const now2 = now();
+        this.panner.pan.value = Math.max(-1, Math.min(1, pan));
+        let subDb = -22;
+        let bellGainDb = -24;
+        let noiseFreq = 3800 + variation * 300;
+        if (colorClass === "kw-red") {
+          subDb = -18;
+          bellGainDb = -34;
+        } else if (colorClass === "kw-gray") {
+          subDb = -26;
+          bellGainDb = -20;
+          noiseFreq = 5200;
+        } else if (colorClass === "kw-blue") {
+          subDb = -20;
+        } else if (colorClass === "kw-yellow") {
+          bellGainDb = -20;
+        }
+        this.subSynth.volume.value = subDb;
+        this.bellGain.gain.value = dbToGain(bellGainDb);
         const subNotes = ["A1", "B1", "C2", "D2"];
         const subNote = subNotes[Math.floor(Math.random() * subNotes.length)];
         const subVel = 0.5 + intensity * 0.5;
@@ -23356,7 +23361,7 @@
         const pitchSet = pitchSets[variation % 4];
         const midNote = pitchSet[Math.floor(Math.random() * pitchSet.length)];
         this.clickSynth.triggerAttackRelease(midNote, "48n", now2, 0.75 + Math.random() * 0.2);
-        this.noiseFilter.frequency.setValueAtTime(3800 + variation * 300, now2);
+        this.noiseFilter.frequency.setValueAtTime(noiseFreq, now2);
         this.noiseEnv.triggerAttackRelease("32n", now2);
         const b1Freq = 988 + (Math.random() - 0.5) * 50;
         const b2Freq = 1319 + (Math.random() - 0.5) * 70;
@@ -23381,8 +23386,10 @@
         this.bellOsc2.dispose();
         this.bellEnv.dispose();
         this.bellGain.dispose();
+        this.bellReverb.dispose();
         this.subSynth.dispose();
         this.clickSynth.dispose();
+        this.panner.dispose();
       } catch (e) {
       }
     }
@@ -23416,6 +23423,17 @@
       this.noise = new Noise("pink").connect(this.noiseVol);
       this.lfo = new LFO({ frequency: 0.05, min: -10, max: 10 });
       this.lfo.connect(this.filter.frequency);
+      this.lfo2 = new LFO({ frequency: 0.07, min: -15, max: 15 });
+      this.lfo2.connect(this.osc2.detune);
+      this._hbVol = new Volume(-Infinity).connect(this.filter);
+      this._hbSynth = new Synth({
+        oscillator: { type: "sine" },
+        envelope: { attack: 5e-3, decay: 0.22, sustain: 0, release: 0.08 },
+        volume: -3
+      }).connect(this._hbVol);
+      this._hbTimer = null;
+      this._hbProgress = 0;
+      this._hbStarted = false;
     }
     start() {
       if (this.isStarted || this.isDisposed) return;
@@ -23426,8 +23444,19 @@
         this.osc3.start();
         this.noise.start();
         this.lfo.start();
+        this.lfo2.start();
       } catch (e) {
       }
+    }
+    // Low sine thump — rate accelerates from 0.6 Hz → 1.4 Hz as progress grows
+    _tickHeartbeat() {
+      if (this.isDisposed) return;
+      try {
+        this._hbSynth.triggerAttackRelease("A1", "64n", now(), 0.8);
+      } catch (e) {
+      }
+      const hz = 0.6 + this._hbProgress * 0.8;
+      this._hbTimer = setTimeout(() => this._tickHeartbeat(), 1e3 / hz);
     }
     // Call this whenever scene progress changes. progress: 0 → 1
     // 0   = completely silent
@@ -23456,10 +23485,28 @@
         this.noiseVol.volume.rampTo(noiseDb, 2.5);
       } catch (e) {
       }
+      const rootFreq = 40 + 15 * p;
+      try {
+        this.osc1.frequency.rampTo(rootFreq, 8);
+        this.osc2.frequency.rampTo(rootFreq, 8);
+        this.osc3.frequency.rampTo(rootFreq * 2, 8);
+      } catch (e) {
+      }
       const lfoFreq = 0.04 + p * 0.08;
       try {
         this.lfo.frequency.rampTo(lfoFreq, 4);
       } catch (e) {
+      }
+      this._hbProgress = p;
+      const hbP = Math.max(0, (p - 0.3) / 0.7);
+      const hbDb = hbP < 0.01 ? -80 : -42 + hbP * 16;
+      try {
+        this._hbVol.volume.rampTo(hbDb, 2);
+      } catch (e) {
+      }
+      if (!this._hbStarted && p >= 0.3) {
+        this._hbStarted = true;
+        this._tickHeartbeat();
       }
     }
     // Smoothly ramp everything to silence over `duration` seconds (default 2 s).
@@ -23469,15 +23516,19 @@
       try {
         this.vol.volume.rampTo(-80, duration);
         this.noiseVol.volume.rampTo(-80, duration);
+        this._hbVol.volume.rampTo(-80, duration);
       } catch (e) {
       }
     }
     dispose() {
       if (this.isDisposed) return;
       this.isDisposed = true;
+      clearTimeout(this._hbTimer);
       try {
         this.lfo.stop();
         this.lfo.dispose();
+        this.lfo2.stop();
+        this.lfo2.dispose();
         this.osc1.stop();
         this.osc1.dispose();
         this.osc2.stop();
@@ -23490,6 +23541,8 @@
         this.droneGain.dispose();
         this.filter.dispose();
         this.vol.dispose();
+        this._hbSynth.dispose();
+        this._hbVol.dispose();
       } catch (e) {
       }
     }
@@ -23549,6 +23602,26 @@
         this.padOsc2.frequency.setValueAtTime(Frequency(chord.f2).toFrequency(), now2);
         this.harmOsc.frequency.setValueAtTime(Frequency(chord.f3).toFrequency(), now2);
         this.padEnv.triggerAttackRelease("8n", now2);
+      } catch (e) {
+      }
+    }
+    // Trigger a sustained accent chord — intended for phase transitions.
+    // Holds for durationSeconds before releasing, giving the moment harmonic space.
+    triggerHeld(type = 0, durationSeconds = 2.5) {
+      if (this.isDisposed) return;
+      try {
+        const now2 = now();
+        const chords = [
+          { f1: "C3", f2: "G3", f3: "C4" },
+          { f1: "G2", f2: "D3", f3: "G3" },
+          { f1: "E3", f2: "B3", f3: "F#4" }
+        ];
+        const chord = chords[type % 3];
+        this.padOsc1.frequency.setValueAtTime(Frequency(chord.f1).toFrequency(), now2);
+        this.padOsc2.frequency.setValueAtTime(Frequency(chord.f2).toFrequency(), now2);
+        this.harmOsc.frequency.setValueAtTime(Frequency(chord.f3).toFrequency(), now2);
+        this.padEnv.triggerAttack(now2);
+        this.padEnv.triggerRelease(now2 + durationSeconds);
       } catch (e) {
       }
     }
@@ -23740,18 +23813,47 @@
     // Trigger a rich multi-layer key-click, rate-limited to ~30/sec max.
     // variation (0-3): pitch set — caller should pass Math.floor(progress*4)
     // intensity (0-1): sub-bass weight — caller should pass scene progress
-    triggerKeyClick(variation = 0, intensity = 0.4) {
+    // pan (-1..1):     stereo position — maps column index to stereo field
+    // colorClass:      keyword CSS class — adjusts timbre per token type
+    triggerKeyClick(variation = 0, intensity = 0.4, pan = 0, colorClass = null) {
       if (!this.typingKeySynth || !this.contextStarted) return;
       const now2 = performance.now();
       if (now2 - this._lastClickTime < 33) return;
       this._lastClickTime = now2;
-      this.typingKeySynth.trigger(variation, intensity);
+      this.typingKeySynth.trigger(variation, intensity, pan, colorClass);
     }
     // Fire a melodic accent (0 = rise, 1 = resolve, 2 = float).
     // Intended for phase transitions and word-count milestones.
     triggerTypingAccent(type = 0) {
       if (!this.typingAccentSynth || !this.contextStarted) return;
       this.typingAccentSynth.triggerAccent(type);
+    }
+    // Fire a sustained chord at a phase boundary — held for durationSeconds.
+    triggerHeldTransitionChord(type = 0, durationSeconds = 2.5) {
+      if (!this.typingAccentSynth || !this.contextStarted) return;
+      this.typingAccentSynth.triggerHeld(type, durationSeconds);
+    }
+    // Descending sine sweep from 600 Hz → 55 Hz over the outro scatter duration.
+    triggerOutroSweep() {
+      if (!this.contextStarted) return;
+      try {
+        const sweepSynth = new Synth({
+          oscillator: { type: "sine" },
+          envelope: { attack: 0.12, decay: 2.4, sustain: 0, release: 0.3 },
+          volume: -18
+        }).connect(this.compressor);
+        const now2 = now();
+        sweepSynth.frequency.setValueAtTime(600, now2);
+        sweepSynth.frequency.exponentialRampToValueAtTime(55, now2 + 2.2);
+        sweepSynth.triggerAttackRelease("2n", now2);
+        setTimeout(() => {
+          try {
+            sweepSynth.dispose();
+          } catch (e) {
+          }
+        }, 3500);
+      } catch (e) {
+      }
     }
     // Drive the ambient drone; call whenever scene progress changes. progress: 0→1
     updateTypingProgress(progress) {
@@ -24250,6 +24352,7 @@
         this.fullscreenCode.appendChild(el);
         const col = {
           el,
+          index: i,
           lineIdx: i * offsetStep,
           lineCount: 0,
           wordQueue: [],
@@ -24400,7 +24503,7 @@
       if (oldCursor) oldCursor.remove();
       this.colStates.forEach((col) => col.el.classList.remove("code-column--offstage"));
       if (this.audioManager) {
-        this.audioManager.triggerTypingAccent(0);
+        this.audioManager.triggerHeldTransitionChord(0, 2.5);
       }
       this.colStates.forEach((col, i) => {
         setTimeout(() => {
@@ -24433,6 +24536,7 @@
         if (this.sceneComplete) return;
         const BATCH_SIZE = 3;
         const spans = [];
+        let lastColorClass = null;
         for (let b = 0; b < BATCH_SIZE; b++) {
           if (this.totalWordsTyped >= this.MAX_WORDS) break;
           if (col.wordQueue.length === 0) {
@@ -24445,7 +24549,10 @@
           span.textContent = text;
           span.style.display = "inline-block";
           span.className = "typing-text";
-          if (colorClass) span.classList.add(colorClass);
+          if (colorClass) {
+            span.classList.add(colorClass);
+            lastColorClass = colorClass;
+          }
           span.classList.add("word-fresh");
           setTimeout(() => span.classList.remove("word-fresh"), this.NEW_WORD_DURATION);
           col.currentLineDiv.appendChild(span);
@@ -24476,7 +24583,8 @@
             const p2 = Math.min(this.totalWordsTyped / this.MAX_WORDS, 1);
             const variation = Math.floor(p2 * 4);
             const intensity = 0.6 + p2 * 0.4;
-            this.audioManager.triggerKeyClick(variation, intensity);
+            const pan = (col.index / (NUM_COLUMNS - 1) - 0.5) * 1.4;
+            this.audioManager.triggerKeyClick(variation, intensity, pan, lastColorClass);
             this.audioManager.updateTypingProgress(0.15 + p2 * 0.85);
             if (this.totalWordsTyped > 0 && this.totalWordsTyped % 500 < 3) {
               const accentType = Math.floor(this.totalWordsTyped / 500) % 3;
@@ -24604,6 +24712,9 @@
     _runOutro() {
       if (this.audioManager && this.audioManager.typingAmbientSynth) {
         this.audioManager.typingAmbientSynth.fadeOut(2.5);
+      }
+      if (this.audioManager) {
+        this.audioManager.triggerOutroSweep();
       }
       document.querySelectorAll(".prompt-cursor").forEach((el) => el.remove());
       const allSpans = Array.from(

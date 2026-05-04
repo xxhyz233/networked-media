@@ -50,6 +50,21 @@ export class TypingAmbientSynth {
     // Very slow LFO (0.05 Hz ≈ one cycle every 20 s) for gentle filter shimmer
     this.lfo = new Tone.LFO({ frequency: 0.05, min: -10, max: 10 });
     this.lfo.connect(this.filter.frequency);
+
+    // Second LFO on osc2 detune — slight ±15 cent wobble creates beating between oscs
+    this.lfo2 = new Tone.LFO({ frequency: 0.07, min: -15, max: 15 });
+    this.lfo2.connect(this.osc2.detune);
+
+    // Heartbeat pulse — low thump that fades in at p=0.3 and accelerates to p=1
+    this._hbVol   = new Tone.Volume(-Infinity).connect(this.filter);
+    this._hbSynth = new Tone.Synth({
+      oscillator: { type: 'sine' },
+      envelope: { attack: 0.005, decay: 0.22, sustain: 0, release: 0.08 },
+      volume: -3,
+    }).connect(this._hbVol);
+    this._hbTimer    = null;
+    this._hbProgress = 0;
+    this._hbStarted  = false;
   }
 
   start() {
@@ -61,7 +76,18 @@ export class TypingAmbientSynth {
       this.osc3.start();
       this.noise.start();
       this.lfo.start();
+      this.lfo2.start();
     } catch (e) { /* context may not be running yet — update() will retry */ }
+  }
+
+  // Low sine thump — rate accelerates from 0.6 Hz → 1.4 Hz as progress grows
+  _tickHeartbeat() {
+    if (this.isDisposed) return;
+    try {
+      this._hbSynth.triggerAttackRelease('A1', '64n', Tone.now(), 0.8);
+    } catch (e) {}
+    const hz = 0.6 + this._hbProgress * 0.8; // 0.6 → 1.4 Hz
+    this._hbTimer = setTimeout(() => this._tickHeartbeat(), 1000 / hz);
   }
 
   // Call this whenever scene progress changes. progress: 0 → 1
@@ -100,11 +126,29 @@ export class TypingAmbientSynth {
       this.noiseVol.volume.rampTo(noiseDb, 2.5);
     } catch (e) {}
 
+    // ── Root frequency drift: 40 Hz → 55 Hz — gives the drone a tonal arc ──
+    const rootFreq = 40 + 15 * p;
+    try {
+      this.osc1.frequency.rampTo(rootFreq,      8.0);
+      this.osc2.frequency.rampTo(rootFreq,      8.0);
+      this.osc3.frequency.rampTo(rootFreq * 2,  8.0);
+    } catch (e) {}
+
     // ── LFO speed: quickens very slightly with progress ─────────────────────
     const lfoFreq = 0.04 + p * 0.08; // 0.04 Hz → 0.12 Hz
     try {
       this.lfo.frequency.rampTo(lfoFreq, 4.0);
     } catch (e) {}
+
+    // ── Heartbeat: fades in from p=0.3, accelerates toward end ──────────────
+    this._hbProgress = p;
+    const hbP  = Math.max(0, (p - 0.3) / 0.7);  // 0 → 1 over the second 70%
+    const hbDb = hbP < 0.01 ? -80 : -42 + hbP * 16; // -42 dB → -26 dB
+    try { this._hbVol.volume.rampTo(hbDb, 2.0); } catch (e) {}
+    if (!this._hbStarted && p >= 0.3) {
+      this._hbStarted = true;
+      this._tickHeartbeat();
+    }
   }
 
   // Smoothly ramp everything to silence over `duration` seconds (default 2 s).
@@ -114,22 +158,27 @@ export class TypingAmbientSynth {
     try {
       this.vol.volume.rampTo(-80, duration);
       this.noiseVol.volume.rampTo(-80, duration);
+      this._hbVol.volume.rampTo(-80, duration);
     } catch (e) {}
   }
 
   dispose() {
     if (this.isDisposed) return;
     this.isDisposed = true;
+    clearTimeout(this._hbTimer);
     try {
-      this.lfo.stop();   this.lfo.dispose();
-      this.osc1.stop();  this.osc1.dispose();
-      this.osc2.stop();  this.osc2.dispose();
-      this.osc3.stop();  this.osc3.dispose();
-      this.noise.stop(); this.noise.dispose();
+      this.lfo.stop();        this.lfo.dispose();
+      this.lfo2.stop();       this.lfo2.dispose();
+      this.osc1.stop();       this.osc1.dispose();
+      this.osc2.stop();       this.osc2.dispose();
+      this.osc3.stop();       this.osc3.dispose();
+      this.noise.stop();      this.noise.dispose();
       this.noiseVol.dispose();
       this.droneGain.dispose();
       this.filter.dispose();
       this.vol.dispose();
+      this._hbSynth.dispose();
+      this._hbVol.dispose();
     } catch (e) { /* already disposed */ }
   }
 }

@@ -487,6 +487,7 @@ export class TypingScene {
 
       const col = {
         el,
+        index:          i,
         lineIdx:        i * offsetStep,
         lineCount:      0,
         wordQueue:      [],
@@ -691,9 +692,9 @@ export class TypingScene {
     // Reveal the 4 surrounding columns instantly — the grid was already visible
     this.colStates.forEach(col => col.el.classList.remove('code-column--offstage'));
 
-    // Accent type 0 (rise) fires once as Phase 2 begins
+    // Accent type 0 (rise) fires once as Phase 2 begins — held chord for harmonic space
     if (this.audioManager) {
-      this.audioManager.triggerTypingAccent(0);
+      this.audioManager.triggerHeldTransitionChord(0, 2.5);
     }
 
     // Stagger each column's auto-typing start so they feel independent.
@@ -736,6 +737,7 @@ export class TypingScene {
 
       const BATCH_SIZE = 3;
       const spans = [];
+      let lastColorClass = null;
 
       for (let b = 0; b < BATCH_SIZE; b++) {
         if (this.totalWordsTyped >= this.MAX_WORDS) break;
@@ -752,7 +754,10 @@ export class TypingScene {
         span.textContent = text;
         span.style.display = 'inline-block';
         span.className = 'typing-text';
-        if (colorClass) span.classList.add(colorClass);
+        if (colorClass) {
+          span.classList.add(colorClass);
+          lastColorClass = colorClass;
+        }
         span.classList.add('word-fresh');
         setTimeout(() => span.classList.remove('word-fresh'), this.NEW_WORD_DURATION);
 
@@ -793,7 +798,9 @@ export class TypingScene {
           const p2     = Math.min(this.totalWordsTyped / this.MAX_WORDS, 1);
           const variation  = Math.floor(p2 * 4);
           const intensity  = 0.6 + p2 * 0.4; // 0.6 at Phase 2 start → 1.0 at end
-          this.audioManager.triggerKeyClick(variation, intensity);
+          // Pan maps column index to stereo field: col 0 far-left → col 4 far-right
+          const pan = (col.index / (NUM_COLUMNS - 1) - 0.5) * 1.4;
+          this.audioManager.triggerKeyClick(variation, intensity, pan, lastColorClass);
           // Drive ambient: Phase 2 occupies progress 0.15 → 1.0
           this.audioManager.updateTypingProgress(0.15 + p2 * 0.85);
           // Melodic accent every 500 words — type cycles through rise/resolve/float
@@ -964,6 +971,11 @@ export class TypingScene {
     // Fade ambient drone out over the scatter duration
     if (this.audioManager && this.audioManager.typingAmbientSynth) {
       this.audioManager.typingAmbientSynth.fadeOut(2.5);
+    }
+
+    // Descending sweep mirrors the visual scatter (text dissolving into silence)
+    if (this.audioManager) {
+      this.audioManager.triggerOutroSweep();
     }
 
     // Remove blinking cursor so it doesn't fight the scatter tween

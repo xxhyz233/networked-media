@@ -230,12 +230,14 @@ export class AudioManager {
   // Trigger a rich multi-layer key-click, rate-limited to ~30/sec max.
   // variation (0-3): pitch set — caller should pass Math.floor(progress*4)
   // intensity (0-1): sub-bass weight — caller should pass scene progress
-  triggerKeyClick(variation = 0, intensity = 0.4) {
+  // pan (-1..1):     stereo position — maps column index to stereo field
+  // colorClass:      keyword CSS class — adjusts timbre per token type
+  triggerKeyClick(variation = 0, intensity = 0.4, pan = 0, colorClass = null) {
     if (!this.typingKeySynth || !this.contextStarted) return;
     const now = performance.now();
     if (now - this._lastClickTime < 33) return; // ≈30 Hz ceiling
     this._lastClickTime = now;
-    this.typingKeySynth.trigger(variation, intensity);
+    this.typingKeySynth.trigger(variation, intensity, pan, colorClass);
   }
 
   // Fire a melodic accent (0 = rise, 1 = resolve, 2 = float).
@@ -243,6 +245,30 @@ export class AudioManager {
   triggerTypingAccent(type = 0) {
     if (!this.typingAccentSynth || !this.contextStarted) return;
     this.typingAccentSynth.triggerAccent(type);
+  }
+
+  // Fire a sustained chord at a phase boundary — held for durationSeconds.
+  triggerHeldTransitionChord(type = 0, durationSeconds = 2.5) {
+    if (!this.typingAccentSynth || !this.contextStarted) return;
+    this.typingAccentSynth.triggerHeld(type, durationSeconds);
+  }
+
+  // Descending sine sweep from 600 Hz → 55 Hz over the outro scatter duration.
+  triggerOutroSweep() {
+    if (!this.contextStarted) return;
+    try {
+      const sweepSynth = new Tone.Synth({
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.12, decay: 2.4, sustain: 0, release: 0.3 },
+        volume: -18,
+      }).connect(this.compressor);
+      const now = Tone.now();
+      sweepSynth.frequency.setValueAtTime(600, now);
+      sweepSynth.frequency.exponentialRampToValueAtTime(55, now + 2.2);
+      sweepSynth.triggerAttackRelease('2n', now);
+      // Dispose after sound finishes — one-shot, not pooled
+      setTimeout(() => { try { sweepSynth.dispose(); } catch (e) {} }, 3500);
+    } catch (e) {}
   }
 
   // Drive the ambient drone; call whenever scene progress changes. progress: 0→1

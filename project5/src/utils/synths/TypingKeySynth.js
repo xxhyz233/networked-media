@@ -10,6 +10,9 @@ export class TypingKeySynth {
     this.masterGain = masterGain;
     this.isDisposed = false;
 
+    // ── Stereo panner — position set per-hit for spatial column placement ────
+    this.panner = new Tone.Panner(0).connect(this.masterGain);
+
     // ── Layer 1: Sub-bass punch ───────────────────────────────────────────────
     // Very low sine — adds physical weight to each keypress
     this.subSynth = new Tone.Synth({
@@ -21,7 +24,7 @@ export class TypingKeySynth {
         release: 0.04,
       },
       volume: -22,
-    }).connect(this.masterGain);
+    }).connect(this.panner);
 
     // ── Layer 2: Mid-range click (main character) ────────────────────────────
     // Triangle gives a rounder click than sine, less scratchy than square
@@ -34,7 +37,7 @@ export class TypingKeySynth {
         release: 0.025,
       },
       volume: -14,
-    }).connect(this.masterGain);
+    }).connect(this.panner);
 
     // ── Layer 3: Filtered noise burst (texture + high-freq click body) ───────
     this.noiseEnv = new Tone.AmplitudeEnvelope({
@@ -54,10 +57,14 @@ export class TypingKeySynth {
     this.noise.connect(this.noiseFilter);
     this.noiseFilter.connect(this.noiseVol);
     this.noiseVol.connect(this.noiseEnv);
-    this.noiseEnv.connect(this.masterGain);
+    this.noiseEnv.connect(this.panner);
 
     // ── Layer 4: Harmonic bell shimmer (two detuned high sines) ─────────────
-    // Subtle — gives each hit a slightly musical quality
+    // Subtle — gives each hit a slightly musical quality.
+    // Routed through a short reverb so the shimmer hangs without muddying clicks.
+    this.bellReverb = new Tone.Reverb({ decay: 0.4, preDelay: 0.005 });
+    this.bellReverb.connect(this.panner);
+
     this.bellEnv = new Tone.AmplitudeEnvelope({
       attack:  0.003,
       decay:   0.12,
@@ -71,7 +78,7 @@ export class TypingKeySynth {
     this.bellOsc1.connect(this.bellGain);
     this.bellOsc2.connect(this.bellGain);
     this.bellGain.connect(this.bellEnv);
-    this.bellEnv.connect(this.masterGain);
+    this.bellEnv.connect(this.bellReverb);
 
     // Start continuous sources
     try {
@@ -82,12 +89,38 @@ export class TypingKeySynth {
   }
 
   // Trigger a rich multi-layer key-click.
-  // variation: 0-3 — cycles through pitch sets (evolves as scene progresses)
-  // intensity: 0-1 — scales sub-bass weight (grows louder in Phase 2)
-  trigger(variation = 0, intensity = 0.4) {
+  // variation (0-3): pitch set — cycles with scene progress
+  // intensity (0-1): sub-bass weight — grows louder in Phase 2
+  // pan (-1..1):     stereo position — maps to column index
+  // colorClass:      keyword CSS class — adjusts timbre per token type
+  trigger(variation = 0, intensity = 0.4, pan = 0, colorClass = null) {
     if (this.isDisposed) return;
     try {
       const now = Tone.now();
+
+      // ── Stereo position ───────────────────────────────────────────────────
+      this.panner.pan.value = Math.max(-1, Math.min(1, pan));
+
+      // ── Per-token timbre ─────────────────────────────────────────────────
+      // Keyword class drives sub weight and bell brightness so code structure
+      // is audible: errors feel heavy, imports feel crisp, types shimmer.
+      let subDb     = -22;
+      let bellGainDb = -24;
+      let noiseFreq  = 3800 + variation * 300;
+      if (colorClass === 'kw-red') {       // null / throw / Error / late — heavy
+        subDb      = -18;
+        bellGainDb = -34;
+      } else if (colorClass === 'kw-gray') { // import / class / const — crisp
+        subDb      = -26;
+        bellGainDb = -20;
+        noiseFreq  = 5200;
+      } else if (colorClass === 'kw-blue') { // if / return / try / catch — punchy
+        subDb      = -20;
+      } else if (colorClass === 'kw-yellow') { // void / Widget / setState — shimmer
+        bellGainDb = -20;
+      }
+      this.subSynth.volume.value   = subDb;
+      this.bellGain.gain.value     = Tone.dbToGain(bellGainDb);
 
       // ── Sub-bass: low fundamental ─────────────────────────────────────────
       const subNotes = ['A1', 'B1', 'C2', 'D2'];
@@ -107,12 +140,10 @@ export class TypingKeySynth {
       this.clickSynth.triggerAttackRelease(midNote, '48n', now, 0.75 + Math.random() * 0.2);
 
       // ── Noise burst ───────────────────────────────────────────────────────
-      // Frequency drifts slightly with variation for texture variety
-      this.noiseFilter.frequency.setValueAtTime(3800 + variation * 300, now);
+      this.noiseFilter.frequency.setValueAtTime(noiseFreq, now);
       this.noiseEnv.triggerAttackRelease('32n', now);
 
-      // ── Bell shimmer ─────────────────────────────────────────────────────
-      // Slightly randomised frequencies keep rapid bursts from blurring together
+      // ── Bell shimmer (via short reverb) ──────────────────────────────────
       const b1Freq = 988  + (Math.random() - 0.5) * 50;
       const b2Freq = 1319 + (Math.random() - 0.5) * 70;
       this.bellOsc1.frequency.setValueAtTime(b1Freq, now);
@@ -136,8 +167,10 @@ export class TypingKeySynth {
       this.bellOsc2.stop();  this.bellOsc2.dispose();
       this.bellEnv.dispose();
       this.bellGain.dispose();
+      this.bellReverb.dispose();
       this.subSynth.dispose();
       this.clickSynth.dispose();
+      this.panner.dispose();
     } catch (e) { /* already disposed */ }
   }
 }

@@ -82,6 +82,26 @@ export class TypingAccentSynth {
     } catch (e) {}
   }
 
+  // Trigger a sustained accent chord — intended for phase transitions.
+  // Holds for durationSeconds before releasing, giving the moment harmonic space.
+  triggerHeld(type = 0, durationSeconds = 2.5) {
+    if (this.isDisposed) return;
+    try {
+      const now = Tone.now();
+      const chords = [
+        { f1: 'C3',  f2: 'G3',  f3: 'C4'  },
+        { f1: 'G2',  f2: 'D3',  f3: 'G3'  },
+        { f1: 'E3',  f2: 'B3',  f3: 'F#4' },
+      ];
+      const chord = chords[type % 3];
+      this.padOsc1.frequency.setValueAtTime(Tone.Frequency(chord.f1).toFrequency(), now);
+      this.padOsc2.frequency.setValueAtTime(Tone.Frequency(chord.f2).toFrequency(), now);
+      this.harmOsc.frequency.setValueAtTime(Tone.Frequency(chord.f3).toFrequency(), now);
+      this.padEnv.triggerAttack(now);
+      this.padEnv.triggerRelease(now + durationSeconds);
+    } catch (e) {}
+  }
+
   dispose() {
     if (this.isDisposed) return;
     this.isDisposed = true;
