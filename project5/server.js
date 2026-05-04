@@ -1,10 +1,17 @@
 import express from 'express';
 
 const app = express();
-const PORT = 11451;
+const PORT = 11455;
+
+app.set('view engine', 'ejs');
+app.set('views', './views');
 
 app.use(express.static('public'));
 app.use(express.json());
+
+app.get('/', (req, res) => {
+  res.render('index', { title: 'HBD 04.28' });
+});
 
 app.get('/api/scenes', (req, res) => {
   const scenes = {
